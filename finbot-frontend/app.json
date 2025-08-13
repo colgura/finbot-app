@@ -1,0 +1,29 @@
+{
+  "expo": {
+    "name": "FinBot",
+    "slug": "finbot-frontend",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/FinBotLogo.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/FinBotLogo.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0A1F44"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/FinBotLogo.png",
+        "backgroundColor": "#0A1F44"
+      },
+      "edgeToEdgeEnabled": true
+    },
+    "web": {
+      "favicon": "./assets/FinBotLogo.png"
+    }
+  }
+}

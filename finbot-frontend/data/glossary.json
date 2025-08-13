@@ -1,0 +1,26 @@
+[
+  {
+    "term": "Stock",
+    "short": "A share in the ownership of a company.",
+    "full": "A stock represents a share in the ownership of a company and constitutes a claim on part of the company’s assets and earnings.",
+    "example": "If you own Apple stock, you own part of Apple Inc.",
+    "category": "Investing",
+    "beginner_friendly": true
+  },
+  {
+    "term": "ETF",
+    "short": "An investment fund traded on stock exchanges.",
+    "full": "An Exchange-Traded Fund (ETF) is a type of pooled investment security that operates like a mutual fund, but trades on stock exchanges.",
+    "example": "SPY is an ETF that tracks the S&P 500 index.",
+    "category": "Investing",
+    "beginner_friendly": true
+  },
+  {
+    "term": "Dividend",
+    "short": "A payment to shareholders from company profits.",
+    "full": "Dividends are payments made by a corporation to its shareholder members, typically from profits.",
+    "example": "Coca-Cola pays quarterly dividends to shareholders.",
+    "category": "Income",
+    "beginner_friendly": true
+  }
+]
