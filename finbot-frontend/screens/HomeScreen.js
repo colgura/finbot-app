@@ -1,4 +1,5 @@
 // screens/HomeScreen.js
+import { Image } from "react-native";
 import React, { useEffect, useState } from "react";
 import {
   View,
@@ -13,19 +14,18 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useNavigation } from "@react-navigation/native";
-
-const BASE_URL =
-  Platform.OS === "android" ? "http://10.0.2.2:5000" : "http://localhost:5000";
+import FinBotLogo from "../assets/FinBotLogo.png";
+import { useAuth } from "../src/context/AuthContext";
 
 
 export default function HomeScreen() {
   const navigation = useNavigation();
   const [greeting, setGreeting] = useState("");
   const [userName, setUserName] = useState("");
-  // when rendering
-  const displayName = userName || "Investor";  
 
-  // 1) Load saved name from AsyncStorage once on mount
+  const displayName = userName || "Investor";
+
+  // Load saved name from AsyncStorage
   useEffect(() => {
     (async () => {
       try {
@@ -38,15 +38,15 @@ export default function HomeScreen() {
     })();
   }, []);
 
-  // 2) Recompute the greeting whenever userName changes
+  // Compute greeting whenever name changes
   useEffect(() => {
     const hour = new Date().getHours();
     let timeGreeting = "Hello";
     if (hour < 12) timeGreeting = "Good Morning";
     else if (hour < 18) timeGreeting = "Good Afternoon";
     else timeGreeting = "Good Evening";
-    setGreeting(`${timeGreeting}, ${userName}`);
-  }, [userName]);
+    setGreeting(`${timeGreeting}, ${displayName}`);
+  }, [displayName]);
 
   const glossaryTips = [
     {
@@ -69,15 +69,16 @@ export default function HomeScreen() {
         "Price-to-Earnings ratio — indicates whether a stock is over/undervalued.",
     },
   ];
-
   const randomTip =
     glossaryTips[Math.floor(Math.random() * glossaryTips.length)];
 
-  const goToOnboarding = async () => {
-    await AsyncStorage.removeItem("userProfile");
-    navigation.replace("Onboarding");
+  const { resetOnboarding } = useAuth();
+
+  const handleResetOnboarding = async () => {
+    await resetOnboarding(); // flips hasOnboarded=false and triggers re-route
   };
 
+  
   const exitApp = () => {
     if (Platform.OS === "android") {
       BackHandler.exitApp();
@@ -88,12 +89,18 @@ export default function HomeScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
+      {/* Brand */}
+      <View style={styles.brandRow}>
+        <Image source={FinBotLogo} style={styles.logo} />
+        <Text style={styles.brandText}>FinBot</Text>
+      </View>
+
       {/* Greeting */}
-      <Text style={styles.heading}>🤖 Welcome to FinBot</Text>
+      <Text style={styles.heading}>Welcome to FinBot</Text>
       <Text style={styles.subtext}>Your AI-powered financial assistant</Text>
       <Text style={styles.greeting}>👋 {greeting}</Text>
 
-      {/* Investor Simulation Highlight */}
+      {/* Investor Simulation */}
       <TouchableOpacity
         style={styles.simulationCard}
         onPress={() => navigation.navigate("Simulation")}
@@ -112,12 +119,12 @@ export default function HomeScreen() {
         <Text style={styles.highlightHeading}>📘 Glossary Term of the Day</Text>
         <Text style={styles.highlightTerm}>{randomTip.term}</Text>
         <Text style={styles.highlightDefinition}>{randomTip.definition}</Text>
-        <TouchableOpacity onPress={() => navigation.navigate("Glossary")}>
-          <Text style={styles.linkText}>Explore Glossary →</Text>
+        <TouchableOpacity onPress={() => navigation.navigate("Learn")}>
+          <Text style={styles.linkText}>Explore Learning Hub →</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Start Chat */}
+      {/* Actions */}
       <TouchableOpacity
         style={styles.button}
         onPress={() => navigation.navigate("Chat")}
@@ -125,7 +132,6 @@ export default function HomeScreen() {
         <Text style={styles.buttonText}>Start Chat</Text>
       </TouchableOpacity>
 
-      {/* Settings */}
       <TouchableOpacity
         style={[styles.button, { flexDirection: "row", alignItems: "center" }]}
         onPress={() => navigation.navigate("Settings")}
@@ -139,7 +145,6 @@ export default function HomeScreen() {
         <Text style={styles.buttonText}>Settings</Text>
       </TouchableOpacity>
 
-      {/* Learning Hub */}
       <TouchableOpacity
         style={styles.button}
         onPress={() => navigation.navigate("Learn")}
@@ -147,7 +152,6 @@ export default function HomeScreen() {
         <Text style={styles.buttonText}>Explore Learning Hub</Text>
       </TouchableOpacity>
 
-      {/* Portfolio */}
       <TouchableOpacity
         style={styles.button}
         onPress={() => navigation.navigate("Portfolio")}
@@ -156,7 +160,10 @@ export default function HomeScreen() {
       </TouchableOpacity>
 
       {/* Reset & Exit */}
-      <TouchableOpacity onPress={goToOnboarding} style={{ marginTop: 30 }}>
+      <TouchableOpacity
+        onPress={handleResetOnboarding}
+        style={{ marginTop: 30 }}
+      >
         <Text style={{ color: "#0A1F44", textAlign: "center" }}>
           Reset Onboarding
         </Text>
@@ -181,6 +188,22 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingBottom: 40,
   },
+  brandRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  logo: {
+    width: 40,
+    height: 40,
+    resizeMode: "contain",
+    marginRight: 8,
+  },
+  brandText: {
+    fontSize: 18,
+    fontWeight: "700",
+  },
+
   heading: {
     fontSize: 26,
     fontWeight: "bold",
@@ -198,7 +221,6 @@ const styles = StyleSheet.create({
     color: "#333",
   },
 
-  /* Simulation Highlight Card */
   simulationCard: {
     flexDirection: "row",
     alignItems: "center",
@@ -214,10 +236,7 @@ const styles = StyleSheet.create({
     color: "#fff",
     marginBottom: 5,
   },
-  simSubtitle: {
-    fontSize: 14,
-    color: "#eee",
-  },
+  simSubtitle: { fontSize: 14, color: "#eee" },
 
   button: {
     backgroundColor: "#0A1F44",
@@ -227,13 +246,8 @@ const styles = StyleSheet.create({
     marginBottom: 15,
     alignItems: "center",
   },
-  buttonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "bold",
-  },
+  buttonText: { color: "#fff", fontSize: 16, fontWeight: "bold" },
 
-  /* Glossary Tip */
   highlightCard: {
     backgroundColor: "#f0f8ff",
     padding: 16,

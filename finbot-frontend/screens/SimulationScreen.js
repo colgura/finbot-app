@@ -1,5 +1,6 @@
 // screens/SimulationScreen.js
 import React, { useState, useEffect, useRef } from "react";
+import { api } from "../src/api/client";
 import {
   View,
   Text,
@@ -130,14 +131,13 @@ export default function SimulationScreen() {
   };
 
   // ===== API calls =====
-  const fetchPortfolio = async (uid) => {
+  const fetchPortfolio = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${BASE_URL}/simulation/portfolio/${uid}`);
-      const data = await response.json();
+      const data = await api(`/simulation/portfolio/${userId}`);
       setCashBalance(parseFloat(data.cash_balance || 0));
       setPortfolio(data.portfolio || {});
-      setHistory(data.history || []); // full history from server
+      if (Array.isArray(data.history)) setHistory(data.history);
     } catch (error) {
       console.error("❌ Error fetching portfolio:", error);
     } finally {
@@ -148,10 +148,9 @@ export default function SimulationScreen() {
   const fetchPrice = async (symbolInput) => {
     setPriceLoading(true);
     try {
-      const response = await fetch(
-        `${BASE_URL}/simulation/price?symbol=${encodeURIComponent(symbolInput)}`
+      const data = await api(
+        `/simulation/price?symbol=${encodeURIComponent(symbolInput)}`
       );
-      const data = await response.json();
       const p = typeof data.price === "number" ? data.price : null;
       setPrice(p);
     } catch (error) {
@@ -162,41 +161,30 @@ export default function SimulationScreen() {
   };
 
   const handleOrder = async () => {
-    if (userId == null) {
-      setMessage("Please create your profile first.");
-      return;
-    }
     if (!symbol.trim() || !quantity) {
       setMessage("Please enter symbol and quantity.");
       return;
     }
     setMessage("Processing...");
     try {
-      const response = await fetch(`${BASE_URL}/simulation/order`, {
+      const data = await api("/simulation/order", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+        body: {
           userId,
           action,
           symbol: symbol.trim().toUpperCase(),
           quantity: parseInt(quantity, 10),
-        }),
+        },
       });
-      const data = await response.json();
-
-      if (!response.ok || data.error) {
-        setMessage(`❌ ${data.error || `HTTP ${response.status}`}`);
-        return;
-      }
 
       setMessage(`✅ ${action} successful!`);
       setCashBalance(parseFloat(data.cash_balance || 0));
       setPortfolio(data.portfolio || {});
-      setHistory(data.history || []); // trust server
-      setQuantity("");
+      if (Array.isArray(data.history)) setHistory(data.history); // trust server’s full history
+      setQuantity(""); // clear only once; keep symbol for quick re-trades
     } catch (error) {
       console.error("❌ Order error:", error);
-      setMessage("❌ Failed to place order.");
+      setMessage(`❌ ${error.message || "Failed to place order."}`);
     }
   };
 

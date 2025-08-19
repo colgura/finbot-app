@@ -1,4 +1,6 @@
+// screens/ChatScreen.js
 import React, { useState, useEffect, useRef } from "react";
+import { API_BASE } from "../src/api/client";
 import {
   View,
   Text,
@@ -13,87 +15,161 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
-import { EventSourcePolyfill } from "event-source-polyfill"; // ✅ Polyfill for SSE
+import { EventSourcePolyfill } from "event-source-polyfill";
 import ChatBubble from "../components/ChatBubble";
 import { colors, fontSizes } from "../styles/theme";
+import { useI18n } from "../src/context/i18nContext";
 
 export default function ChatScreen() {
-  const [language, setLanguage] = useState("english");
+  const navigation = useNavigation();
+  const { lang } = useI18n(); // "english" | "shona"
+  const scrollRef = useRef(null);
+  const esRef = useRef(null);
+  const streamIndexRef = useRef(-1); // track the temp streaming bubble index
+
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState([
     {
       type: "bot",
-      text: "Hi! Ask me about any stock (e.g., ‘Is NVDA overvalued?’)",
+      text:
+        lang === "shona"
+          ? "Mhoro! Bvunza nezve chero stock (semuenzaniso: ‘NVDA yakanyanyisa kudhura here?’)"
+          : "Hi! Ask me about any stock (e.g., ‘Is NVDA overvalued?’)",
     },
   ]);
 
-  const scrollRef = useRef(null);
-  const navigation = useNavigation();
-
-  // ✅ Load preferred language
+  // ensure greeting tracks language change live
   useEffect(() => {
-    const loadLanguage = async () => {
-      const savedLang = await AsyncStorage.getItem("preferredLanguage");
-      if (savedLang) setLanguage(savedLang);
+    setMessages((prev) => {
+      if (!prev.length) return prev;
+      const first = prev[0];
+      if (first.type !== "bot") return prev;
+      const updated = {
+        ...first,
+        text:
+          lang === "shona"
+            ? "Mhoro! Bvunza nezve chero stock (semuenzaniso: ‘NVDA yakanyanyisa kudhura here?’)"
+            : "Hi! Ask me about any stock (e.g., ‘Is NVDA overvalued?’)",
+      };
+      return [updated, ...prev.slice(1)];
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lang]);
+
+  // auto-scroll to bottom on new content
+  useEffect(() => {
+    scrollRef.current?.scrollToEnd({ animated: true });
+  }, [messages]);
+
+  // tidy up any open SSE when leaving screen
+  useEffect(() => {
+    return () => {
+      try {
+        esRef.current?.close();
+      } catch {}
     };
-    loadLanguage();
   }, []);
 
-  // ✅ Send message with SSE using polyfill
-  const sendMessage = () => {
-    if (!input.trim()) return;
+  const sendMessage = async () => {
+    const q = input.trim();
+    if (!q) return;
 
-    const userMessage = { type: "user", text: input };
-    setMessages((prev) => [...prev, userMessage]);
+    // push user message
+    setMessages((prev) => [...prev, { type: "user", text: q }]);
+    setInput("");
 
-    let partialText = "";
+    // prepare streaming bubble
+    let partial = "";
+    setMessages((prev) => {
+      streamIndexRef.current = prev.length; // index of the new temp bubble
+      return [...prev, { type: "bot-temp", text: "" }];
+    });
 
-    const es = new EventSourcePolyfill(
-      `http://10.0.2.2:5000/ask?question=${encodeURIComponent(
-        input
-      )}&language=${language}`
-    );
+    // optional auth header
+    const token = await AsyncStorage.getItem("authToken");
+    const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+
+    // open SSE to backend
+    const url = `${API_BASE}/ask?question=${encodeURIComponent(
+      q
+    )}&language=${encodeURIComponent(lang)}`;
+
+    const es = new EventSourcePolyfill(url, {
+      headers,
+      heartbeatTimeout: 45000,
+    });
+    esRef.current = es;
 
     es.addEventListener("open", () => {
-      console.log("✅ SSE connection opened");
+      // console.log("SSE opened");
     });
 
     es.addEventListener("message", (event) => {
       if (event.data === "[DONE]") {
         es.close();
-        setMessages((prev) => [
-          ...prev.filter((m) => m.type !== "bot-temp"),
-          { type: "bot", text: partialText },
-        ]);
-      } else {
-        partialText += event.data;
-        setMessages((prev) => [
-          ...prev.filter((m) => m.type !== "bot-temp"),
-          { type: "bot-temp", text: partialText },
-        ]);
+        esRef.current = null;
+        // convert temp bubble to final bot bubble
+        setMessages((prev) => {
+          const i = streamIndexRef.current;
+          if (i < 0 || i >= prev.length) return prev;
+          const copy = [...prev];
+          copy[i] = { type: "bot", text: partial || "(no content)" };
+          streamIndexRef.current = -1;
+          return copy;
+        });
+        return;
       }
+      // accumulate streaming text
+      partial += event.data;
+      setMessages((prev) => {
+        const i = streamIndexRef.current;
+        if (i < 0 || i >= prev.length) return prev;
+        const copy = [...prev];
+        copy[i] = { type: "bot-temp", text: partial };
+        return copy;
+      });
     });
 
     es.addEventListener("error", (err) => {
-      console.error("❌ SSE error:", err);
-      es.close();
+      // console.error("SSE error:", err);
+      try {
+        es.close();
+      } catch {}
+      esRef.current = null;
       setMessages((prev) => [
         ...prev,
-        { type: "bot", text: "⚠️ Could not fetch response from server." },
+        {
+          type: "bot",
+          text:
+            lang === "shona"
+              ? "⚠️ Kanganiso yakaitika pakutora mhinduro kubva kuseva."
+              : "⚠️ Could not fetch response from server.",
+        },
       ]);
+      streamIndexRef.current = -1;
     });
-
-    setInput("");
   };
 
-
-  const handleSuggestion = (suggestion) => setInput(suggestion);
+  const suggestions =
+    lang === "shona"
+      ? [
+          "NVDA yakanyanyisa kudhura here?",
+          "Musiyano uripo pakati pe ‘stocks’ ne ‘bonds’ chii?",
+          "Tsanangura ‘risk tolerance’",
+        ]
+      : [
+          "Is NVDA overvalued?",
+          "What’s the difference between stocks and bonds?",
+          "Explain risk tolerance",
+        ];
 
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Stock Advisor Chat</Text>
+        <Text style={styles.headerTitle}>
+          {lang === "shona" ? "Stock Advisor Chat-Room" : "Stock Advisor Chat-Room"}
+        </Text>
         <View style={styles.headerIcons}>
           <TouchableOpacity onPress={() => navigation.navigate("Home")}>
             <Ionicons name="home-outline" size={24} color="#fff" />
@@ -115,13 +191,7 @@ export default function ChatScreen() {
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
-        <ScrollView
-          style={styles.chatArea}
-          ref={scrollRef}
-          onContentSizeChange={() =>
-            scrollRef.current?.scrollToEnd({ animated: true })
-          }
-        >
+        <ScrollView style={styles.chatArea} ref={scrollRef}>
           {messages.map((msg, index) => (
             <ChatBubble
               key={index}
@@ -133,17 +203,13 @@ export default function ChatScreen() {
 
         {/* Suggestions */}
         <View style={styles.suggestions}>
-          {[
-            "Is NVDA overvalued?",
-            "What’s the difference between stocks and bonds?",
-            "Explain risk tolerance",
-          ].map((suggestion, idx) => (
+          {suggestions.map((s, idx) => (
             <TouchableOpacity
               key={idx}
-              onPress={() => handleSuggestion(suggestion)}
+              onPress={() => setInput(s)}
               style={styles.suggestionButton}
             >
-              <Text style={styles.suggestionText}>{suggestion}</Text>
+              <Text style={styles.suggestionText}>{s}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -153,11 +219,18 @@ export default function ChatScreen() {
           <TextInput
             value={input}
             onChangeText={setInput}
-            placeholder="Ask about stocks..."
+            placeholder={
+              lang === "shona"
+                ? "Bvunza nezve masheya..."
+                : "Ask about stocks..."
+            }
+            placeholderTextColor="#888"
             style={styles.input}
           />
           <TouchableOpacity onPress={sendMessage} style={styles.button}>
-            <Text style={styles.buttonText}>Send</Text>
+            <Text style={styles.buttonText}>
+              {lang === "shona" ? "Tumira" : "Send"}
+            </Text>
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -195,6 +268,8 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     padding: 10,
     marginRight: 5,
+    color: "#000",
+    backgroundColor: "#fff",
   },
   button: {
     backgroundColor: colors.primary,

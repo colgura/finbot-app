@@ -11,12 +11,14 @@ import {
   Keyboard,
   Platform,
   StyleSheet,
-  Alert, // ✅ needed
+  Alert,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, CommonActions } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { colors, fontSizes, fontWeights } from "../styles/theme";
+import { useAuth } from "../src/context/AuthContext";
+
 
 const goals = ["Grow Wealth", "Learn Basics", "Save for Retirement"];
 const risks = ["Low", "Moderate", "High"];
@@ -24,6 +26,10 @@ const interests = ["Stocks", "ETFs", "Crypto", "General"];
 
 export default function OnboardingScreen() {
   const navigation = useNavigation();
+  const { signOut, markOnboarded } = useAuth();
+
+  // hooks declared at top level only
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [name, setName] = useState("");
   const [goal, setGoal] = useState(null);
   const [risk, setRisk] = useState(null);
@@ -43,11 +49,28 @@ export default function OnboardingScreen() {
       );
       return;
     }
-    const profile = { name, goal, risk, interests: selectedInterests };
-    await AsyncStorage.setItem("userProfile", JSON.stringify(profile));
-    console.log("✅ Profile saved:", profile);
-    navigation.replace("Home");
+
+    setIsSubmitting(true);
+    try {
+      const profile = { name, goal, risk, interests: selectedInterests };
+      await AsyncStorage.setItem("userProfile", JSON.stringify(profile));
+
+      // ensure we don't have a lingering session
+      // await AsyncStorage.removeItem("authToken");
+      await signOut();
+
+      // mark onboarding complete
+      await markOnboarded();
+
+      // go to Auth (Sign in / Sign up)
+      // navigation.replace("Login");
+    // } catch (e) {
+    //   Alert.alert("Error", e?.message || "Could not save your profile.");
+    } finally {
+      setIsSubmitting(false); 
+    }
   };
+
 
   return (
     <KeyboardAvoidingView
@@ -58,7 +81,7 @@ export default function OnboardingScreen() {
         <ScrollView
           style={styles.container}
           contentContainerStyle={{ paddingBottom: 40 }}
-          keyboardShouldPersistTaps="handled" // ✅ lets button receive taps
+          keyboardShouldPersistTaps="handled"
         >
           <Text style={styles.title}>👋 Hi! I’m FinBot</Text>
           <Text style={styles.subtitle}>
@@ -76,7 +99,7 @@ export default function OnboardingScreen() {
           />
 
           {/* Goal */}
-          <Text style={styles.label}>Investment Goal</Text>
+          <Text style={styles.label}>What is Your Investment Goal, Select</Text>
           <View style={styles.optionsRow}>
             {goals.map((g) => (
               <TouchableOpacity
@@ -94,7 +117,7 @@ export default function OnboardingScreen() {
           </View>
 
           {/* Risk */}
-          <Text style={styles.label}>Risk Preference</Text>
+          <Text style={styles.label}>What is Your Risk Preference</Text>
           <View style={styles.optionsRow}>
             {risks.map((r) => (
               <TouchableOpacity
@@ -112,7 +135,7 @@ export default function OnboardingScreen() {
           </View>
 
           {/* Interests */}
-          <Text style={styles.label}>Interests</Text>
+          <Text style={styles.label}>What are Your Interests</Text>
           <View style={styles.optionsRow}>
             {interests.map((i) => (
               <TouchableOpacity
@@ -138,8 +161,10 @@ export default function OnboardingScreen() {
 
           <View style={{ marginTop: 20, alignItems: "center" }}>
             <Text style={{ color: "#ccc", fontSize: 12, textAlign: "center" }}>
-              Disclaimer: FinBot is for educational purposes only and does not
-              provide financial advice.
+              Disclaimer: This AI-based FinBot application software is for
+              educational informational purposes only and does not constitute
+              financial advice. Always conduct your research or consult with a
+              financial advisor before making any investment decisions.
             </Text>
           </View>
 
@@ -147,15 +172,29 @@ export default function OnboardingScreen() {
           <TouchableOpacity
             style={[
               styles.continueButton,
-              (!name || !goal || !risk || selectedInterests.length === 0) && {
+              (!name ||
+                !goal ||
+                !risk ||
+                selectedInterests.length === 0 ||
+                isSubmitting) && {
                 opacity: 0.6,
               },
             ]}
             onPress={handleContinue}
+            disabled={
+              !name ||
+              !goal ||
+              !risk ||
+              selectedInterests.length === 0 ||
+              isSubmitting
+            }
             activeOpacity={0.9}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Text style={styles.continueText}>Continue to Dashboard</Text>
+            <Text style={styles.continueText}>
+              {isSubmitting ? "Please wait…" : "Continue to Sign In"}
+            </Text>
+
             <Ionicons
               name="arrow-forward"
               size={20}

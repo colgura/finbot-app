@@ -1,6 +1,7 @@
 // screens/PortfolioScreen.js
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { useWindowDimensions } from "react-native";
+import { Platform } from "react-native";
 import {
   View,
   Text,
@@ -8,12 +9,12 @@ import {
   ActivityIndicator,
   RefreshControl,
   TouchableOpacity,
-  Platform,
   StyleSheet,
 } from "react-native";
 import Svg, { Circle } from "react-native-svg";
 import { useNavigation } from "@react-navigation/native";
 import { colors, fontSizes } from "../styles/theme";
+
 
 const USER_ID = 1;
 const API_BASE =
@@ -43,7 +44,7 @@ export default function PortfolioScreen() {
   const [cash, setCash] = useState(0);
   const [positions, setPositions] = useState([]); // [{symbol, qty, avg_cost}]
   const [prices, setPrices] = useState({}); // {SYM: price}
-  
+
   const { width } = useWindowDimensions();
   const donutSize = Math.min(148, width - 72); // was 200
   const strokeW = Math.max(14, Math.round(donutSize * 0.16)); // thinner ring
