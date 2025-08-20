@@ -62,10 +62,7 @@ export default function OnboardingScreen() {
       // mark onboarding complete
       await markOnboarded();
 
-      // go to Auth (Sign in / Sign up)
-      // navigation.replace("Login");
-    // } catch (e) {
-    //   Alert.alert("Error", e?.message || "Could not save your profile.");
+      
     } finally {
       setIsSubmitting(false); 
     }

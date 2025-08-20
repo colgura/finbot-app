@@ -10,11 +10,11 @@ import {
   ActivityIndicator,
   Platform,
 } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useNavigation } from "@react-navigation/native";
-import { colors, fontSizes, fontWeights } from "../styles/theme";
+import { colors } from "../styles/theme";
 import { useI18n } from "../src/context/i18nContext";
 import { useAuth } from "../src/context/AuthContext";
+import { clearUserNamespace } from "../src/utils/storage";
 
 const API_BASE =
   Platform.OS === "android" ? "http://10.0.2.2:5000" : "http://localhost:5000";
@@ -31,31 +31,20 @@ const safeJSON = (txt) => {
 export default function SettingsScreen() {
   const navigation = useNavigation();
   const { lang, setLang, t } = useI18n();
-  const { token } = useAuth();
+  const { userId, token, profile, signOut, resetOnboarding } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [localProfile, setLocalProfile] = useState(null);
   const [email, setEmail] = useState(null);
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
       try {
-        const entries = await AsyncStorage.multiGet(["userId", "userProfile"]);
-        const map = Object.fromEntries(entries);
+        setLocalProfile(profile ?? null);
 
-        // local profile (defensive parse)
-        if (map.userProfile) {
-          try {
-            setLocalProfile(JSON.parse(map.userProfile));
-          } catch {
-            // ignore bad local JSON
-          }
-        }
-
-        // server profile (defensive fetch/parse so the app never crashes)
-        const uid = map.userId;
-        if (uid) {
-          const r = await fetch(`${API_BASE}/profile/${uid}`, {
+        if (userId) {
+          const r = await fetch(`${API_BASE}/profile/${userId}`, {
             headers: {
               Accept: "application/json",
               ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -63,17 +52,20 @@ export default function SettingsScreen() {
           });
           const text = await r.text();
           const data = safeJSON(text);
-          if (r.ok && data && data.ok) {
+          if (!cancelled && r.ok && data && data.ok) {
             setEmail(data?.profile?.email || data?.account?.email || null);
           }
         }
       } catch (e) {
         console.warn("Load settings error:", e);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     })();
-  }, [token]);
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, token, profile]);
 
   const handleLogout = async () => {
     Alert.alert(t("settings.logout"), "Are you sure you want to log out?", [
@@ -82,23 +74,17 @@ export default function SettingsScreen() {
         text: t("settings.logout"),
         style: "destructive",
         onPress: async () => {
-          await AsyncStorage.multiRemove(["authToken", "userId"]);
-          // IMPORTANT: our app uses Login/Register (not "Auth")
+          await signOut(); // clears token/profile/userId + per-user cache
           navigation.reset({ index: 0, routes: [{ name: "Login" }] });
         },
       },
     ]);
   };
 
-  const resetOnboarding = async () => {
-    // Make sure onboarding really resets
-    await AsyncStorage.multiRemove([
-      "hasOnboarded",
-      "authToken",
-      "userId",
-      "userProfile",
-    ]);
-    navigation.reset({ index: 0, routes: [{ name: "Onboarding" }] });
+  // Use this to re-run Onboarding (don’t navigate directly to a route that isn’t mounted)
+  const handleEditProfile = async () => {
+    await resetOnboarding(); // flips hasOnboarded=false and clears auth
+    // Routes() in App.js will automatically show the Onboarding stack
   };
 
   const clearLocalCache = async () => {
@@ -111,13 +97,9 @@ export default function SettingsScreen() {
           text: t("settings.clearLocal"),
           style: "destructive",
           onPress: async () => {
-            await AsyncStorage.multiRemove([
-              "authToken",
-              "userId",
-              "userProfile",
-              "lang",
-              "hasOnboarded",
-            ]);
+            if (userId != null) await clearUserNamespace(userId);
+            await setLang("english"); // ensure labels don’t show raw keys
+            await resetOnboarding();
             navigation.reset({ index: 0, routes: [{ name: "Login" }] });
           },
         },
@@ -129,7 +111,7 @@ export default function SettingsScreen() {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={{ color: colors.text, marginTop: 8 }}>Loading…</Text>
+        <Text style={{ color: "#9BB0C5", marginTop: 8 }}>Loading…</Text>
       </View>
     );
   }
@@ -188,7 +170,7 @@ export default function SettingsScreen() {
 
         <TouchableOpacity
           style={[styles.button, { marginTop: 12 }]}
-          onPress={() => navigation.navigate("Onboarding")}
+          onPress={handleEditProfile}
         >
           <Text style={styles.buttonText}>{t("settings.editProfile")}</Text>
         </TouchableOpacity>
@@ -205,7 +187,7 @@ export default function SettingsScreen() {
       {/* Maintenance */}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>{t("settings.maintenance")}</Text>
-        <TouchableOpacity style={styles.buttonAlt} onPress={resetOnboarding}>
+        <TouchableOpacity style={styles.buttonAlt} onPress={handleEditProfile}>
           <Text style={styles.buttonAltText}>
             {t("settings.resetOnboarding")}
           </Text>
@@ -217,16 +199,6 @@ export default function SettingsScreen() {
           <Text style={styles.buttonAltText}>{t("settings.clearLocal")}</Text>
         </TouchableOpacity>
       </View>
-
-      {/* About — show only if you actually have an "About" route */}
-      {false ? (
-        <TouchableOpacity
-          style={[styles.button, { marginTop: 16 }]}
-          onPress={() => navigation.navigate("About")}
-        >
-          <Text style={styles.buttonText}>{t("settings.about")}</Text>
-        </TouchableOpacity>
-      ) : null}
     </ScrollView>
   );
 }

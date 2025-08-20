@@ -19,7 +19,7 @@ import FinBotLogo from "../assets/FinBotLogo.png";
 import { colors, fontSizes } from "../styles/theme";
 
 // single source of truth for the light gray UI background
-const UI_BG = "#EEF2F7"; // ← used for top banner AND inputs
+const UI_BG = "#EEF2F7"; // used for top banner AND inputs
 const PLACEHOLDER = "#6B7280";
 
 export default function LoginScreen() {
@@ -36,18 +36,17 @@ export default function LoginScreen() {
       Alert.alert("Missing info", "Please provide email and password.");
       return;
     }
-
-     if (!human) {
-       alert("Please confirm you are human 🙂");
-       return;
-     }
+    if (!human) {
+      Alert.alert("Verification", "Please confirm you are human 🙂");
+      return;
+    }
 
     setBusy(true);
     try {
+      // ✅ Let App.js route guards switch stacks; no manual reset to "Home"
       await signInWithPassword({ email, password, human: true });
-      nav.reset({ index: 0, routes: [{ name: "Home" }] });
     } catch (e) {
-      Alert.alert("Login failed", e.message || "Please try again.");
+      Alert.alert("Login failed", e?.message || "Please try again.");
     } finally {
       setBusy(false);
     }
@@ -91,6 +90,7 @@ export default function LoginScreen() {
           <TextInput
             style={styles.input}
             placeholder="you@example.com"
+            placeholderTextColor={PLACEHOLDER}
             autoCapitalize="none"
             keyboardType="email-address"
             value={email}
@@ -105,6 +105,7 @@ export default function LoginScreen() {
           <TextInput
             style={styles.input}
             placeholder="Enter password"
+            placeholderTextColor={PLACEHOLDER}
             secureTextEntry
             value={password}
             onChangeText={setPassword}
@@ -189,7 +190,7 @@ const styles = StyleSheet.create({
     color: "#0A1F44",
     marginBottom: 6,
     letterSpacing: 0.2,
-    LineHeight: 28,
+    lineHeight: 28,
   },
   subCentered: {
     textAlign: "center",
@@ -209,7 +210,7 @@ const styles = StyleSheet.create({
     color: "#444",
     fontSize: fontSizes.label,
     fontWeight: "600",
-    lineHeight: "18",
+    lineHeight: 18,
     marginTop: 8,
     marginBottom: 6,
   },
@@ -220,12 +221,10 @@ const styles = StyleSheet.create({
   input: {
     backgroundColor: UI_BG,
     borderWidth: 1,
-    // borderColor: "#e5e7eb",
     borderColor: "#D8DFEA",
     borderRadius: 8,
-    paddingHoriznotal: 12,
+    paddingHorizontal: 12,
     paddingVertical: 12,
-    // backgroundColor: "#fff",
     marginBottom: 10,
   },
   humanRow: {

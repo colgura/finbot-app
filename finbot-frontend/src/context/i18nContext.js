@@ -5,13 +5,15 @@ import React, {
   useEffect,
   useMemo,
   useState,
+  useCallback,
 } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+
+const LANG_KEY = "lang";
 
 const STRINGS = {
   english: {
     lang: { english: "English", shona: "Shona" },
-
     settings: {
       title: "Settings",
       language: "Language",
@@ -24,16 +26,13 @@ const STRINGS = {
       about: "About",
       editProfile: "Edit Profile",
     },
-
-    // Aliases to match any legacy calls you might still have
+    // legacy aliases
     account: "Account",
     Security: "Security",
     Logout: "Log out",
   },
-
   shona: {
     lang: { english: "Chirungu", shona: "ChiShona" },
-
     settings: {
       title: "Zvirongwa",
       language: "Mutauro",
@@ -46,8 +45,7 @@ const STRINGS = {
       about: "Nezve",
       editProfile: "Gadzirisa Profaira",
     },
-
-    // Aliases (legacy keys)
+    // legacy aliases
     account: "Akaunti",
     Security: "Chengetedzo",
     Logout: "Kubuda",
@@ -55,6 +53,7 @@ const STRINGS = {
 };
 
 function getByPath(obj, path) {
+  if (!obj || !path) return undefined;
   return path
     .split(".")
     .reduce((o, k) => (o && o[k] != null ? o[k] : undefined), obj);
@@ -62,42 +61,63 @@ function getByPath(obj, path) {
 
 const I18nCtx = createContext({
   lang: "english",
-  setLang: () => {},
+  setLang: async () => {},
   t: (k) => k,
+  hydrated: false,
 });
 
-export function I18nProvider({ children }) {
-  const [lang, setLang] = useState("english");
+function I18nProvider({ children }) {
+  const [lang, setLangState] = useState("english");
+  const [hydrated, setHydrated] = useState(false);
 
+  // Load saved language once
   useEffect(() => {
     (async () => {
-      const saved = await AsyncStorage.getItem("lang");
-      if (saved && STRINGS[saved]) setLang(saved);
+      try {
+        const saved = await AsyncStorage.getItem(LANG_KEY);
+        if (saved && STRINGS[saved]) setLangState(saved);
+      } finally {
+        setHydrated(true);
+      }
     })();
   }, []);
 
-  const value = useMemo(() => {
-    const t = (key) => {
-      // Try selected language
-      const fromSel = getByPath(STRINGS[lang] || {}, key);
-      if (fromSel != null) return fromSel;
-      // Fallback to English
+  // Persisted setter (ignore invalid codes)
+  const setLang = useCallback(async (next) => {
+    if (!STRINGS[next]) return;
+    setLangState(next);
+    try {
+      await AsyncStorage.setItem(LANG_KEY, next);
+    } catch {
+      // ignore storage errors
+    }
+  }, []);
+
+  // Translator with fallback to English, then key itself
+  const t = useCallback(
+    (key) => {
+      const fromSel = getByPath(STRINGS[lang], key);
+      if (typeof fromSel === "string") return fromSel;
+
       const fromEn = getByPath(STRINGS.english, key);
-      if (fromEn != null) return fromEn;
-      // Last resort: return the key itself
-      return key;
-    };
+      if (typeof fromEn === "string") return fromEn;
 
-    const setLangPersist = async (next) => {
-      if (!STRINGS[next]) return;
-      setLang(next);
-      await AsyncStorage.setItem("lang", next);
-    };
+      return key; // last resort
+    },
+    [lang]
+  );
 
-    return { lang, setLang: setLangPersist, t };
-  }, [lang]);
+  const value = useMemo(
+    () => ({ lang, setLang, t, hydrated }),
+    [lang, setLang, t, hydrated]
+  );
 
   return <I18nCtx.Provider value={value}>{children}</I18nCtx.Provider>;
 }
 
+// Hook (named) export with correct casing
 export const useI18n = () => useContext(I18nCtx);
+
+// Export both ways so any import style works
+export { I18nProvider };
+export default I18nProvider;
