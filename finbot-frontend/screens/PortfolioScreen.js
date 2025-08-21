@@ -1,6 +1,6 @@
 // screens/PortfolioScreen.js
 import React, { useEffect, useMemo, useState, useCallback } from "react";
-import { useWindowDimensions } from "react-native";
+import { useWindowDimensions, Platform } from "react-native";
 import {
   View,
   Text,
@@ -8,14 +8,15 @@ import {
   ActivityIndicator,
   RefreshControl,
   TouchableOpacity,
-  Platform,
   StyleSheet,
 } from "react-native";
 import Svg, { Circle } from "react-native-svg";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useNavigation } from "@react-navigation/native";
+import { useAuth } from "../src/context/AuthContext";
 import { colors, fontSizes } from "../styles/theme";
 
-const USER_ID = 1;
+// API base (Android emulator vs iOS/web)
 const API_BASE =
   Platform.OS === "android" ? "http://10.0.2.2:5000" : "http://localhost:5000";
 
@@ -36,6 +37,8 @@ const CASH_COLOR = "#233142";
 
 export default function PortfolioScreen() {
   const navigation = useNavigation();
+  const { userId, token } = useAuth();
+
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
@@ -43,20 +46,39 @@ export default function PortfolioScreen() {
   const [cash, setCash] = useState(0);
   const [positions, setPositions] = useState([]); // [{symbol, qty, avg_cost}]
   const [prices, setPrices] = useState({}); // {SYM: price}
-  
+  const [displayName, setDisplayName] = useState(null);
+  const [startingCapital, setStartingCapital] = useState(10000); // default US$10,000
+
   const { width } = useWindowDimensions();
   const donutSize = Math.min(148, width - 72); // was 200
   const strokeW = Math.max(14, Math.round(donutSize * 0.16)); // thinner ring
 
   const load = useCallback(async () => {
     setError(null);
-    try {
-      // 1) Portfolio snapshot
-      const r = await fetch(`${API_BASE}/simulation/portfolio/${USER_ID}`);
-      const data = await r.json();
-      if (!r.ok || data.error)
-        throw new Error(data.error || `HTTP ${r.status}`);
 
+    // If no user yet, show gentle guidance and stop loading state
+    if (!userId) {
+      setCash(0);
+      setPositions([]);
+      setPrices({});
+      setLoading(false);
+      setRefreshing(false);
+      setError("Please sign in to view your portfolio.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // 1) Portfolio snapshot (server should scope by userId)
+      const r = await fetch(`${API_BASE}/simulation/portfolio/${userId}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      const data = await r.json();
+      if (!r.ok || data.error) {
+        throw new Error(data.error || `HTTP ${r.status}`);
+      }
+
+      // Support both shapes: positions[] or { portfolio: {SYM:qty} }
       const pos =
         data.positions ||
         Object.entries(data.portfolio || {}).map(([symbol, qty]) => ({
@@ -74,7 +96,12 @@ export default function PortfolioScreen() {
         syms.map(async (s) => {
           try {
             const rr = await fetch(
-              `${API_BASE}/simulation/price?symbol=${encodeURIComponent(s)}`
+              `${API_BASE}/simulation/price?symbol=${encodeURIComponent(s)}`,
+              {
+                headers: token
+                  ? { Authorization: `Bearer ${token}` }
+                  : undefined,
+              }
             );
             const dd = await rr.json();
             return [s, typeof dd.price === "number" ? dd.price : null];
@@ -91,11 +118,35 @@ export default function PortfolioScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [userId, token]);
 
+  // Load on mount and whenever user/token changes
   useEffect(() => {
     load();
   }, [load]);
+
+  // load display name from onboarding profile; optional starting balance if you decide to store it later
+  useEffect(() => {
+    (async () => {
+      try {
+        const [profileRaw, startRaw] = await AsyncStorage.multiGet([
+          "userProfile", // saved by Onboarding
+          "simulationStart", // optional future key for starting cash
+        ]).then((arr) => arr.map(([, v]) => v));
+
+        if (profileRaw) {
+          try {
+            const p = JSON.parse(profileRaw);
+            if (p?.name) setDisplayName(p.name);
+          } catch {}
+        }
+        if (startRaw) {
+          const n = Number(startRaw);
+          if (!Number.isNaN(n) && n > 0) setStartingCapital(n);
+        }
+      } catch {}
+    })();
+  }, []);
 
   const rows = useMemo(() => {
     const arr = positions.map((p, i) => {
@@ -138,6 +189,39 @@ export default function PortfolioScreen() {
     }));
   }, [rows.rows, cash]);
 
+  // Profit/Loss vs starting capital
+  const plValue = useMemo(
+    () => (rows.total || 0) - (startingCapital || 0),
+    [rows.total, startingCapital]
+  );
+  const plPct = useMemo(
+    () => (startingCapital > 0 ? plValue / startingCapital : 0),
+    [plValue, startingCapital]
+  );
+  const plColor = plValue >= 0 ? "#2ECC71" : "#FF6B6B";
+
+  // helper: turns holdings into a short sentence like "AAPL 40%, MSFT 25%, CASH 10%"
+  const makeAllocSummary = () => {
+    const parts = [];
+    rows.rows.forEach((r) => {
+      const pct = rows.total > 0 ? Math.round((r.value / rows.total) * 100) : 0;
+      if (pct > 0) parts.push(`${r.symbol} ${pct}%`);
+    });
+    if (cash > 0) {
+      const total = rows.total || 1;
+      parts.push(`CASH ${Math.round((cash / total) * 100)}%`);
+    }
+    return parts.slice(0, 8).join(", ");
+  };
+
+  const askAboutMyPortfolio = () => {
+    const summary = makeAllocSummary();
+    const q = summary
+      ? `Explain my current portfolio (${summary}). What risks, diversification issues, and improvement suggestions do you see?`
+      : `I have no holdings yet. How should I think about building a simple, diversified starter portfolio for my risk level?`;
+    navigation.navigate("Chat", { initialQuestion: q });
+  };
+
   const askFinBot = () => {
     const desc = alloc
       .map((a) => `${a.label} ${Math.round(a.pct * 100)}%`)
@@ -160,14 +244,33 @@ export default function PortfolioScreen() {
 
   if (error) {
     return (
-      <View style={styles.center}>
-        <Text style={[styles.title, { color: colors.error || "#ff6b6b" }]}>
+      <ScrollView
+        contentContainerStyle={[styles.center, { padding: 16 }]}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              load();
+            }}
+          />
+        }
+      >
+        <Text
+          style={[
+            styles.title,
+            { color: colors.error || "#ff6b6b", textAlign: "center" },
+          ]}
+        >
           {error}
         </Text>
-        <TouchableOpacity style={styles.button} onPress={load}>
+        <TouchableOpacity
+          style={[styles.button, { marginTop: 12 }]}
+          onPress={load}
+        >
           <Text style={styles.buttonText}>Retry</Text>
         </TouchableOpacity>
-      </View>
+      </ScrollView>
     );
   }
 
@@ -187,14 +290,21 @@ export default function PortfolioScreen() {
         />
       }
     >
-      <Text style={styles.title}>📊 My Portfolio</Text>
+      <Text style={styles.title}>
+        📊 My Portfolio{displayName ? ` - ${displayName}` : ""}
+      </Text>
 
       {/* Totals */}
       <View style={styles.totalsCard}>
         <Stat label="Cash" value={cash} />
         <Stat label="Securities" value={rows.mktTotal} />
         <Stat label="Total" value={rows.total} bold />
+        <Stat label="P/L" value={plValue} bold color={plColor} />
       </View>
+
+      <Text style={{ color: plColor, marginBottom: 12 }}>
+        {plValue >= 0 ? "▲" : "▼"} {Math.abs(plPct * 100).toFixed(2)}%
+      </Text>
 
       {/* Donut chart */}
       {hasPositions || cash > 0 ? (
@@ -244,9 +354,7 @@ export default function PortfolioScreen() {
 
       {/* Ask FinBot */}
       <TouchableOpacity style={styles.button} onPress={askFinBot}>
-        <Text style={styles.buttonText}>
-          Ask FinBot to explain this portfolio
-        </Text>
+        <Text style={styles.buttonText}>Ask FinBot about your portfolio</Text>
       </TouchableOpacity>
     </ScrollView>
   );
@@ -298,11 +406,18 @@ function Donut({ data, size = 200, strokeW = 26 }) {
 }
 
 /* ---------- Small components ---------- */
-function Stat({ label, value, bold }) {
+function Stat({ label, value, bold, color }) {
   return (
-    <View style={{ flex: 1 }}>
-      <Text style={styles.statLabel}>{label}</Text>
-      <Text style={[styles.statValue, bold && { fontWeight: "800" }]}>
+     <View style={{ flex: 1, minWidth: 0 }}>
+      <Text style={styles.statLabel} numberOfLines={1}>{label}</Text>
+      <Text
+        style={[
+          styles.statValue,
+            bold && { fontWeight: "800" },
+            color ? { color } : null,
+        ]}
+        numberOfLines={1}
+      >
         ${fmt(value)}
       </Text>
     </View>
@@ -380,7 +495,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   statLabel: { color: "#9BB0C5", marginBottom: 4 },
-  statValue: { color: "#E6EEF8", fontSize: 18, fontWeight: "700" },
+  statValue: { color: "#E6EEF8", fontSize: 16, fontWeight: "700" },
 
   legendRow: { flexDirection: "row", alignItems: "center", marginTop: 6 },
   dot: { width: 12, height: 12, borderRadius: 6, marginRight: 8 },

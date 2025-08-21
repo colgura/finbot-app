@@ -1,133 +1,271 @@
-import React, { useState, useEffect } from "react";
+// screens/SettingsScreen.js
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
-  Switch,
   Alert,
+  ScrollView,
+  ActivityIndicator,
+  Platform,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useNavigation } from "@react-navigation/native";
+import { colors } from "../styles/theme";
+import { useI18n } from "../src/context/i18nContext";
+import { useAuth } from "../src/context/AuthContext";
+import { clearUserNamespace } from "../src/utils/storage";
+
+const API_BASE =
+  Platform.OS === "android" ? "http://10.0.2.2:5000" : "http://localhost:5000";
+
+// defensive JSON parse in case server returns non-JSON
+const safeJSON = (txt) => {
+  try {
+    return JSON.parse(txt);
+  } catch {
+    return null;
+  }
+};
 
 export default function SettingsScreen() {
-  const [isDarkTheme, setIsDarkTheme] = useState(false);
-  const [language, setLanguage] = useState("English");
+  const navigation = useNavigation();
+  const { lang, setLang, t } = useI18n();
+  const { userId, token, profile, signOut, resetOnboarding } = useAuth();
 
-  // ✅ Load saved preferences on mount
+  const [loading, setLoading] = useState(true);
+  const [localProfile, setLocalProfile] = useState(null);
+  const [email, setEmail] = useState(null);
+
   useEffect(() => {
-    const loadPreferences = async () => {
+    let cancelled = false;
+    (async () => {
       try {
-        const savedLang = await AsyncStorage.getItem("preferredLanguage");
-        if (savedLang) setLanguage(savedLang === "shona" ? "Shona" : "English");
-      } catch (error) {
-        console.error("Error loading preferences:", error);
+        setLocalProfile(profile ?? null);
+
+        if (userId) {
+          const r = await fetch(`${API_BASE}/profile/${userId}`, {
+            headers: {
+              Accept: "application/json",
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+          });
+          const text = await r.text();
+          const data = safeJSON(text);
+          if (!cancelled && r.ok && data && data.ok) {
+            setEmail(data?.profile?.email || data?.account?.email || null);
+          }
+        }
+      } catch (e) {
+        console.warn("Load settings error:", e);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
+    })();
+    return () => {
+      cancelled = true;
     };
-    loadPreferences();
-  }, []);
+  }, [userId, token, profile]);
 
-  const toggleTheme = () => setIsDarkTheme(!isDarkTheme);
-
-  // ✅ Toggle and persist language
-  const toggleLanguage = async () => {
-    try {
-      const newLang = language === "English" ? "Shona" : "English";
-      setLanguage(newLang);
-      await AsyncStorage.setItem(
-        "preferredLanguage",
-        newLang.toLowerCase() // store as "english" or "shona"
-      );
-      Alert.alert("Language Updated", `Language changed to ${newLang}`);
-    } catch (error) {
-      console.error("Error saving language:", error);
-    }
+  const handleLogout = async () => {
+    Alert.alert(t("settings.logout"), "Are you sure you want to log out?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: t("settings.logout"),
+        style: "destructive",
+        onPress: async () => {
+          await signOut(); // clears token/profile/userId + per-user cache
+          navigation.reset({ index: 0, routes: [{ name: "Login" }] });
+        },
+      },
+    ]);
   };
 
+  // Use this to re-run Onboarding (don’t navigate directly to a route that isn’t mounted)
+  const handleEditProfile = async () => {
+    await resetOnboarding(); // flips hasOnboarded=false and clears auth
+    // Routes() in App.js will automatically show the Onboarding stack
+  };
+
+  const clearLocalCache = async () => {
+    Alert.alert(
+      t("settings.clearLocal"),
+      "This will remove saved profile and token on this device.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: t("settings.clearLocal"),
+          style: "destructive",
+          onPress: async () => {
+            if (userId != null) await clearUserNamespace(userId);
+            await setLang("english"); // ensure labels don’t show raw keys
+            await resetOnboarding();
+            navigation.reset({ index: 0, routes: [{ name: "Login" }] });
+          },
+        },
+      ]
+    );
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={{ color: "#9BB0C5", marginTop: 8 }}>Loading…</Text>
+      </View>
+    );
+  }
+
+  const displayName = localProfile?.name ?? "(No name set)";
+
   return (
-    <View style={styles.container}>
-      <Text style={styles.sectionTitle}>👤 Profile</Text>
+    <ScrollView contentContainerStyle={styles.container}>
+      <Text style={styles.title}>{t("settings.title")}</Text>
 
-      <TouchableOpacity
-        style={styles.item}
-        onPress={() => Alert.alert("Edit Profile")}
-      >
-        <Ionicons name="person-outline" size={20} />
-        <Text style={styles.itemText}>Edit Profile</Text>
-      </TouchableOpacity>
+      {/* Language */}
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>{t("settings.language")}</Text>
+        <View style={styles.langRow}>
+          <TouchableOpacity
+            onPress={() => setLang("english")}
+            style={[styles.pill, lang === "english" && styles.pillActive]}
+          >
+            <Text
+              style={[
+                styles.pillText,
+                lang === "english" && styles.pillTextActive,
+              ]}
+            >
+              {t("lang.english")}
+            </Text>
+          </TouchableOpacity>
 
-      <TouchableOpacity
-        style={styles.item}
-        onPress={() => Alert.alert("Change Password")}
-      >
-        <Ionicons name="lock-closed-outline" size={20} />
-        <Text style={styles.itemText}>Change Password</Text>
-      </TouchableOpacity>
-
-      <Text style={styles.sectionTitle}>⚙️ Preferences</Text>
-
-      <TouchableOpacity style={styles.item}>
-        <Ionicons name="notifications-outline" size={20} />
-        <Text style={styles.itemText}>Notification Preferences</Text>
-      </TouchableOpacity>
-
-      <View style={styles.item}>
-        <Ionicons name="moon-outline" size={20} />
-        <Text style={styles.itemText}>Dark Theme</Text>
-        <Switch value={isDarkTheme} onValueChange={toggleTheme} />
+          <TouchableOpacity
+            onPress={() => setLang("shona")}
+            style={[styles.pill, lang === "shona" && styles.pillActive]}
+          >
+            <Text
+              style={[
+                styles.pillText,
+                lang === "shona" && styles.pillTextActive,
+              ]}
+            >
+              {t("lang.shona")}
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
-      <View style={styles.item}>
-        <Ionicons name="language-outline" size={20} />
-        <Text style={styles.itemText}>Language: {language}</Text>
-        <TouchableOpacity onPress={toggleLanguage}>
-          <Text style={{ color: "#007bff", marginLeft: 10 }}>Switch</Text>
+      {/* Account */}
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>{t("account")}</Text>
+        <View style={styles.row}>
+          <Text style={styles.label}>Name</Text>
+          <Text style={styles.value}>{displayName}</Text>
+        </View>
+        <View style={styles.row}>
+          <Text style={styles.label}>Email</Text>
+          <Text style={styles.value}>{email ?? "(not set)"} </Text>
+        </View>
+
+        <TouchableOpacity
+          style={[styles.button, { marginTop: 12 }]}
+          onPress={handleEditProfile}
+        >
+          <Text style={styles.buttonText}>{t("settings.editProfile")}</Text>
         </TouchableOpacity>
       </View>
 
-      <Text style={styles.sectionTitle}>📄 Others</Text>
-      <TouchableOpacity
-        style={styles.item}
-        onPress={() => navigation.navigate("About")}
-      >
-        <Ionicons name="information-circle-outline" size={20} color="#fff" />
-        <Text style={styles.itemText}>About FinBot</Text>
-      </TouchableOpacity>
+      {/* Security */}
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>{t("Security")}</Text>
+        <TouchableOpacity style={styles.buttonAlt} onPress={handleLogout}>
+          <Text style={styles.buttonAltText}>{t("Logout")}</Text>
+        </TouchableOpacity>
+      </View>
 
-      <TouchableOpacity
-        style={styles.item}
-        onPress={() => Alert.alert("Terms & Conditions")}
-      >
-        <Ionicons name="document-text-outline" size={20} />
-        <Text style={styles.itemText}>Terms & Conditions</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={styles.item}
-        onPress={() => Alert.alert("Feedback form")}
-      >
-        <Ionicons name="chatbox-ellipses-outline" size={20} />
-        <Text style={styles.itemText}>Feedback</Text>
-      </TouchableOpacity>
-    </View>
+      {/* Maintenance */}
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>{t("settings.maintenance")}</Text>
+        <TouchableOpacity style={styles.buttonAlt} onPress={handleEditProfile}>
+          <Text style={styles.buttonAltText}>
+            {t("settings.resetOnboarding")}
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.buttonAlt, { marginTop: 8 }]}
+          onPress={clearLocalCache}
+        >
+          <Text style={styles.buttonAltText}>{t("settings.clearLocal")}</Text>
+        </TouchableOpacity>
+      </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20, backgroundColor: "#fff" },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    marginTop: 20,
+  center: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 16,
+  },
+  container: { padding: 16, paddingBottom: 32 },
+  title: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: colors.primary,
     marginBottom: 10,
   },
-  item: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 12,
-    borderBottomWidth: 0.5,
-    borderColor: "#ccc",
-    justifyContent: "space-between",
+  card: {
+    backgroundColor: "#0F1A30",
+    borderRadius: 14,
+    padding: 14,
+    marginTop: 12,
   },
-  itemText: { fontSize: 16, marginLeft: 10, flex: 1 },
+  cardTitle: {
+    color: "#E6EEF8",
+    fontSize: 16,
+    fontWeight: "800",
+    marginBottom: 8,
+  },
+  row: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingVertical: 6,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#1B2947",
+  },
+  label: { color: "#9BB0C5" },
+  value: { color: "#E6EEF8", fontWeight: "700" },
+
+  // Language pills
+  langRow: { flexDirection: "row", marginTop: 6 },
+  pill: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    backgroundColor: "#1B2947",
+    borderRadius: 20,
+    marginRight: 10,
+  },
+  pillActive: { backgroundColor: colors.primary },
+  pillText: { color: "#E6EEF8", fontWeight: "700" },
+  pillTextActive: { color: "#fff", fontWeight: "800" },
+
+  // Buttons
+  button: {
+    backgroundColor: colors.primary,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  buttonText: { color: "#fff", fontWeight: "800" },
+  buttonAlt: {
+    backgroundColor: "#1B2947",
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: "center",
+    marginTop: 6,
+  },
+  buttonAltText: { color: "#E6EEF8", fontWeight: "700" },
 });

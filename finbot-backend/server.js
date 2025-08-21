@@ -3,6 +3,9 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import OpenAI from "openai";
+import authRoutes from "./src/routes/auth.js";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
 
 import pool from "./src/db/mysql.js";
 import {
@@ -16,16 +19,17 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const JWT_SECRET = process.env.JWT_SECRET || "dev_secret_change_me";
 
 app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 // Log every request path & method to diagnose mismatches
 app.use((req, _res, next) => {
   console.log(`➡️  ${req.method} ${req.path}`);
   next();
 });
-
 
 // ----- Fee model -----
 const FEE_RATE = 0.0005; // 5 bps
@@ -166,6 +170,9 @@ async function ensureUserAccount(conn, userId) {
     [userId]
   );
 }
+
+// ---- mount auth ----
+app.use("/auth", authRoutes);
 
 // ---------- Simulation API ----------
 
@@ -351,11 +358,16 @@ async function getOrCreateUserId(conn, { userId, name }) {
   if (!clean) return null;
 
   // Try existing by exact name
-  const [rows] = await conn.query("SELECT id FROM users WHERE name = ? ORDER BY id DESC LIMIT 1", [clean]);
+  const [rows] = await conn.query(
+    "SELECT id FROM users WHERE name = ? ORDER BY id DESC LIMIT 1",
+    [clean]
+  );
   if (rows.length) return Number(rows[0].id);
 
   // Create new
-  const [ins] = await conn.query("INSERT INTO users (name) VALUES (?)", [clean]);
+  const [ins] = await conn.query("INSERT INTO users (name) VALUES (?)", [
+    clean,
+  ]);
   const newId = Number(ins.insertId);
   await conn.query(
     "INSERT IGNORE INTO sim_accounts (user_id, balance) VALUES (?, 10000.00)",
@@ -380,7 +392,13 @@ app.all(profilePaths, async (req, res) => {
   const conn = await pool.getConnection();
   try {
     const src = req.method === "GET" ? req.query : req.body;
-    let { userId = null, name = "", goal = null, risk = null, interests = null } = src || {};
+    let {
+      userId = null,
+      name = "",
+      goal = null,
+      risk = null,
+      interests = null,
+    } = src || {};
     name = String(name || "").trim();
 
     await conn.beginTransaction();
@@ -403,7 +421,13 @@ app.all(profilePaths, async (req, res) => {
          goal=VALUES(goal),
          risk=VALUES(risk),
          interests=VALUES(interests)`,
-      [id, name || null, goal, risk, interests ? JSON.stringify(interests) : null]
+      [
+        id,
+        name || null,
+        goal,
+        risk,
+        interests ? JSON.stringify(interests) : null,
+      ]
     );
 
     await conn.commit();
@@ -420,6 +444,86 @@ app.all(profilePaths, async (req, res) => {
     res.status(500).json({ error: "Failed to save profile" });
   } finally {
     conn.release();
+  }
+});
+
+// ---------- Auth (Register / Login) ----------
+app.post("/auth/register", async (req, res) => {
+  try {
+    const { name, email, password } = req.body || {};
+    if (!name || !email || !password) {
+      return res.status(400).json({ error: "Missing credentials" });
+    }
+
+    const conn = await pool.getConnection();
+    try {
+      const [[exists]] = await conn.query(
+        "SELECT id FROM users WHERE email = ?",
+        [email]
+      );
+      if (exists) {
+        return res.status(409).json({ error: "Email already registered" });
+      }
+
+      const hash = await bcrypt.hash(password, 10);
+      const [result] = await conn.query(
+        "INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)",
+        [name, email, hash]
+      );
+
+      const userId = result.insertId;
+
+      // Ensure account exists
+      await conn.query(
+        "INSERT IGNORE INTO sim_accounts (user_id, balance) VALUES (?, 10000.00)",
+        [userId]
+      );
+
+      const token = jwt.sign({ userId, email }, JWT_SECRET, {
+        expiresIn: "7d",
+      });
+      res.json({ ok: true, userId, token });
+    } finally {
+      conn.release();
+    }
+  } catch (e) {
+    console.error("Register error:", e);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+app.post("/auth/login", async (req, res) => {
+  try {
+    const { email, password } = req.body || {};
+    if (!email || !password) {
+      return res.status(400).json({ error: "Missing credentials" });
+    }
+
+    const conn = await pool.getConnection();
+    try {
+      const [[user]] = await conn.query(
+        "SELECT id, password_hash, name FROM users WHERE email = ?",
+        [email]
+      );
+      if (!user?.id) {
+        return res.status(401).json({ error: "Invalid email or password" });
+      }
+
+      const ok = await bcrypt.compare(password, user.password_hash || "");
+      if (!ok) {
+        return res.status(401).json({ error: "Invalid email or password" });
+      }
+
+      const token = jwt.sign({ userId: user.id, email }, JWT_SECRET, {
+        expiresIn: "7d",
+      });
+      res.json({ ok: true, userId: user.id, name: user.name, token });
+    } finally {
+      conn.release();
+    }
+  } catch (e) {
+    console.error("Login error:", e);
+    res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
@@ -479,7 +583,13 @@ app.get("/profile/:idOrName", async (req, res) => {
 app.post("/users/upsert", async (req, res) => {
   const conn = await pool.getConnection();
   try {
-    let { userId = null, name = "", goal = null, risk = null, interests = null } = req.body || {};
+    let {
+      userId = null,
+      name = "",
+      goal = null,
+      risk = null,
+      interests = null,
+    } = req.body || {};
     name = String(name || "").trim();
 
     if (!name && !userId) {
@@ -499,7 +609,9 @@ app.post("/users/upsert", async (req, res) => {
         id = Number(rows[0].id);
       } else {
         // create new user (assumes users.id is AUTO_INCREMENT)
-        const [ins] = await conn.query("INSERT INTO users (name) VALUES (?)", [name]);
+        const [ins] = await conn.query("INSERT INTO users (name) VALUES (?)", [
+          name,
+        ]);
         id = Number(ins.insertId);
       }
     }
@@ -524,7 +636,13 @@ app.post("/users/upsert", async (req, res) => {
          goal=VALUES(goal),
          risk=VALUES(risk),
          interests=VALUES(interests)`,
-      [id, name || null, goal, risk, interests ? JSON.stringify(interests) : null]
+      [
+        id,
+        name || null,
+        goal,
+        risk,
+        interests ? JSON.stringify(interests) : null,
+      ]
     );
 
     await conn.commit();
@@ -544,7 +662,7 @@ app.post("/users/upsert", async (req, res) => {
   }
 });
 
-
+app.use("/auth", authRoutes);
 
 // ---------- JSON-only fallbacks ----------
 app.use((req, res) => {

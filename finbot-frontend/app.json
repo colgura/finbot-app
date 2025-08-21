@@ -24,6 +24,10 @@
     },
     "web": {
       "favicon": "./assets/FinBotLogo.png"
+    },
+    "extra": {
+      "googleExpoClientId": "YOUR_GOOGLE_EXPO_CLIENT_ID.apps.googleusercontent.com",
+      "facebookAppId": "YOUR_FACEBOOK_APP_ID"
     }
   }
 }
