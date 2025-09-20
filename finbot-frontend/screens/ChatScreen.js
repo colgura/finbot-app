@@ -178,7 +178,7 @@ export default function ChatScreen() {
     const url = `${API_BASE}/ask?question=${encodeURIComponent(
       qFinal
     )}&language=${encodeURIComponent(lang)}`;
-
+    // Streaming GPT responses in React Native
     const es = new EventSourcePolyfill(url, {
       headers,
       heartbeatTimeout: 45000,
@@ -369,3 +369,4 @@ const styles = StyleSheet.create({
   suggestionButton: { marginBottom: 5 },
   suggestionText: { color: "#333", textDecorationLine: "underline" },
 });
+

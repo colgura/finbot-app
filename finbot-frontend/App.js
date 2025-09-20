@@ -8,6 +8,7 @@ import LearnScreen from "./screens/LearnScreen";
 import I18nProvider from "./src/context/i18nContext";
 import { AuthProvider, useAuth } from "./src/context/AuthContext";
 import { colors } from "./styles/theme";
+import DocumentUploadScreen from "./screens/DocumentUploadScreen";
 
 // ⬇️ Update these paths if your files live elsewhere
 import OnboardingScreen from "./screens/OnboardingScreen";
@@ -15,9 +16,9 @@ import LoginScreen from "./screens/LoginScreen";
 import RegisterScreen from "./screens/RegisterScreen";
 import HomeScreen from "./screens/HomeScreen";
 import PortfolioScreen from "./screens/PortfolioScreen";
-import SimulationScreen from "./screens/SimulationScreen"; // if you named it differently, fix the import
-import ChatScreen from "./screens/ChatScreen"; // optional: only if you have it
-import SettingsScreen from "./screens/SettingsScreen"; // optional: only if you have it
+import SimulationScreen from "./screens/SimulationScreen";
+import ChatScreen from "./screens/ChatScreen";
+import SettingsScreen from "./screens/SettingsScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -42,6 +43,7 @@ function Routes() {
         <Stack.Screen name="Onboarding" component={OnboardingScreen} />
         <Stack.Screen name="Login" component={LoginScreen} />
         <Stack.Screen name="Register" component={RegisterScreen} />
+        {/* ⬇️ Restore Learn here */}
       </Stack.Navigator>
     );
   }
@@ -63,6 +65,11 @@ function Routes() {
         name="Home"
         component={HomeScreen}
         options={{ title: "FinBot" }}
+      />
+      <Stack.Screen
+        name="Upload"
+        component={DocumentUploadScreen}
+        options={{ title: "Upload Report" }}
       />
       <Stack.Screen
         name="Portfolio"

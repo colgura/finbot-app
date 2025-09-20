@@ -17,7 +17,6 @@ import { useNavigation } from "@react-navigation/native";
 import FinBotLogo from "../assets/FinBotLogo.png";
 import { useAuth } from "../src/context/AuthContext";
 
-
 export default function HomeScreen() {
   const navigation = useNavigation();
   const [greeting, setGreeting] = useState("");
@@ -78,7 +77,6 @@ export default function HomeScreen() {
     await resetOnboarding(); // flips hasOnboarded=false and triggers re-route
   };
 
-  
   const exitApp = () => {
     if (Platform.OS === "android") {
       BackHandler.exitApp();
@@ -145,6 +143,14 @@ export default function HomeScreen() {
         <Text style={styles.buttonText}>Settings</Text>
       </TouchableOpacity>
 
+      {/* ✅ Upload Report gets its own button (no nested <Button/> component) */}
+      <TouchableOpacity
+        style={styles.button}
+        onPress={() => navigation.navigate("Upload")}
+      >
+        <Text style={styles.buttonText}>Upload Report</Text>
+      </TouchableOpacity>
+
       <TouchableOpacity
         style={styles.button}
         onPress={() => navigation.navigate("Learn")}
@@ -160,17 +166,16 @@ export default function HomeScreen() {
       </TouchableOpacity>
 
       {/* Reset & Exit */}
-      <TouchableOpacity
-        onPress={handleResetOnboarding}
-        style={{ marginTop: 30 }}
-      >
-        <Text style={{ color: "#0A1F44", textAlign: "center" }}>
-          Reset Onboarding
-        </Text>
-      </TouchableOpacity>
-      <TouchableOpacity onPress={exitApp} style={{ marginTop: 15 }}>
-        <Text style={{ color: "red", textAlign: "center" }}>Exit App</Text>
-      </TouchableOpacity>
+      <View style={{ marginTop: 30 }}>
+        <TouchableOpacity onPress={handleResetOnboarding}>
+          <Text style={{ color: "#0A1F44", textAlign: "center" }}>
+            Reset Onboarding
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={exitApp} style={{ marginTop: 15 }}>
+          <Text style={{ color: "red", textAlign: "center" }}>Exit App</Text>
+        </TouchableOpacity>
+      </View>
 
       {/* Tip of the Day */}
       <View style={styles.highlightsBox}>

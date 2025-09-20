@@ -18,6 +18,8 @@ import PortfolioScreen from "../screens/PortfolioScreen";
 import GlossaryScreen from "../screens/GlossaryScreen";
 import SimulationScreen from "../screens/SimulationScreen";
 import AboutScreen from "../screens/AboutScreen";
+import InvestorSimulationScreen from "../screens/InvestorSimulationScreen";
+import { colors, fontSizes, fontWeights } from "../styles/theme";
 
 const AuthStackNav = createNativeStackNavigator();
 const AppStackNav = createNativeStackNavigator();
@@ -42,13 +44,14 @@ function AuthStack() {
 function AppStack() {
   return (
     <AppStackNav.Navigator>
-      {/* Optional: if you want onboarding right after sign-up */}
       <AppStackNav.Screen
         name="Onboarding"
         component={OnboardingScreen}
         options={{ headerShown: false }}
       />
+
       <AppStackNav.Screen name="Home" component={HomeScreen} />
+
       <AppStackNav.Screen
         name="Chat"
         component={ChatScreen}
@@ -68,14 +71,30 @@ function AppStack() {
           ),
         })}
       />
+
+      {/* Keep only ONE Simulation route name */}
       <AppStackNav.Screen
         name="Simulation"
         component={SimulationScreen}
         options={{ title: "Investor Simulation" }}
       />
+      {/* Give the second one a distinct name */}
+      <AppStackNav.Screen
+        name="InvestorSimulation"
+        component={InvestorSimulationScreen}
+        options={{ title: "Investor Simulation (Cases)" }}
+      />
+
       <AppStackNav.Screen name="Settings" component={SettingsScreen} />
       <AppStackNav.Screen name="About" component={AboutScreen} />
-      <AppStackNav.Screen name="Upload" component={DocumentUploadScreen} />
+
+      {/* Keep only ONE Upload route */}
+      <AppStackNav.Screen
+        name="Upload"
+        component={DocumentUploadScreen}
+        options={{ title: "Upload Report" }}
+      />
+
       <AppStackNav.Screen name="Learn" component={LearnScreen} />
       <AppStackNav.Screen name="Portfolio" component={PortfolioScreen} />
       <AppStackNav.Screen name="Glossary" component={GlossaryScreen} />
