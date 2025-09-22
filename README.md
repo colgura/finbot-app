@@ -13,11 +13,13 @@ FinBot is a mobile/web app that helps a beginner investor learn by doing:
 ⚠️ FinBot is an education tool. It does not provide financial advice.
 
 ## Repository Layout
+
 finbot-app/
 ├─ finbot-backend/ # Node.js/Express + MySQL
 └─ finbot-frontend/ # React Native (Expo)
 
 ---
+
 Tech Stack
 
 Frontend: React Native + Expo (Android emulator or Web)
@@ -31,30 +33,36 @@ Optional LLM: OpenAI (for PDF summaries)
 Auth & State: AsyncStorage (demo), simple user upsert
 
 ---
+
 # Summarized Repo Layout
+
 finbot-app/
 ├─ finbot-backend/
-│  ├─ src/
-│  │  └─ routes/
-│  │     ├─ auth.js
-│  │     └─ reportRoutes.js
-│  ├─ server.js
-│  ├─ package.json
-│  └─ .env  (create)
+│ ├─ src/
+│ │ └─ routes/
+│ │ ├─ auth.js
+│ │ └─ reportRoutes.js
+│ ├─ server.js
+│ ├─ package.json
+│ └─ .env (create)
 │
 └─ finbot-frontend/
-   ├─ screens/
-   │  ├─ HomeScreen.js
-   │  ├─ ChatScreen.js
-   │  ├─ SimulationScreen.js
-   │  ├─ DocumentUploadScreen.js
-   │  └─ …
-   ├─ navigation/AppNavigator.js (or App.js routes)
-   ├─ package.json
-   └─ app.json
+├─ screens/
+│ ├─ HomeScreen.js
+│ ├─ ChatScreen.js
+│ ├─ SimulationScreen.js
+│ ├─ DocumentUploadScreen.js
+│ └─ …
+├─ navigation/AppNavigator.js (or App.js routes)
+├─ package.json
+└─ app.json
+
 # See Final Report for Detailed Directory Structure.
+
 ---
+
 ## Prerequisites
+
 - Node.js ≥ 18 and npm ≥ 9 (`node -v`, `npm -v`)
 - MySQL 8 on `localhost:3306`
 - Git
@@ -63,6 +71,7 @@ finbot-app/
 > Windows users: run commands in **PowerShell**.
 
 ---
+
 Database Setup
 
 Create a database and the core tables:
@@ -71,50 +80,50 @@ USE finbot_db;
 
 -- Minimal user table (demo)
 CREATE TABLE IF NOT EXISTS users (
-  id INT NOT NULL AUTO_INCREMENT,
-  name VARCHAR(128) NOT NULL,
-  PRIMARY KEY (id)
+id INT NOT NULL AUTO_INCREMENT,
+name VARCHAR(128) NOT NULL,
+PRIMARY KEY (id)
 ) ENGINE=InnoDB;
 
 -- Accounts (cash, totals)
 CREATE TABLE IF NOT EXISTS sim_accounts (
-  user_id INT NOT NULL,
-  balance DECIMAL(18,2) NOT NULL DEFAULT 10000.00,
-  realized_pnl DECIMAL(18,2) NOT NULL DEFAULT 0.00,
-  fees_total DECIMAL(18,2) NOT NULL DEFAULT 0.00,
-  PRIMARY KEY (user_id),
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+user_id INT NOT NULL,
+balance DECIMAL(18,2) NOT NULL DEFAULT 10000.00,
+realized_pnl DECIMAL(18,2) NOT NULL DEFAULT 0.00,
+fees_total DECIMAL(18,2) NOT NULL DEFAULT 0.00,
+PRIMARY KEY (user_id),
+FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 -- Positions
 CREATE TABLE IF NOT EXISTS sim_positions (
-  user_id INT NOT NULL,
-  symbol  VARCHAR(16) NOT NULL,
-  qty     INT NOT NULL,
-  avg_cost DECIMAL(18,4) NOT NULL DEFAULT 0,
-  PRIMARY KEY (user_id, symbol),
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+user_id INT NOT NULL,
+symbol VARCHAR(16) NOT NULL,
+qty INT NOT NULL,
+avg_cost DECIMAL(18,4) NOT NULL DEFAULT 0,
+PRIMARY KEY (user_id, symbol),
+FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 -- Trades (NOTE: ts has default CURRENT_TIMESTAMP)
 CREATE TABLE IF NOT EXISTS sim_trades (
-  id BIGINT NOT NULL AUTO_INCREMENT,
-  user_id INT NOT NULL,
-  ts DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  action ENUM('BUY','SELL') NOT NULL,
-  symbol VARCHAR(16) NOT NULL,
-  qty INT NOT NULL,
-  price DECIMAL(18,4) NOT NULL,
-  total DECIMAL(18,4) NOT NULL,
-  fee DECIMAL(18,2) NOT NULL DEFAULT 0.00,
-  realized_pnl DECIMAL(18,2) DEFAULT NULL,
-  PRIMARY KEY (id),
-  KEY idx_user_ts (user_id, ts),
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+id BIGINT NOT NULL AUTO_INCREMENT,
+user_id INT NOT NULL,
+ts DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+action ENUM('BUY','SELL') NOT NULL,
+symbol VARCHAR(16) NOT NULL,
+qty INT NOT NULL,
+price DECIMAL(18,4) NOT NULL,
+total DECIMAL(18,4) NOT NULL,
+fee DECIMAL(18,2) NOT NULL DEFAULT 0.00,
+realized_pnl DECIMAL(18,2) DEFAULT NULL,
+PRIMARY KEY (id),
+KEY idx_user_ts (user_id, ts),
+FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
-
 ---
+
 ## 1 Backend Setup (Express + MySQL)
 
 ```powershell
@@ -251,3 +260,4 @@ Express, MySQL
 OpenAI (optional summaries)
 
 ---
+```
