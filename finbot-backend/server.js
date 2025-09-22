@@ -4,9 +4,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import OpenAI from "openai";
 import jwt from "jsonwebtoken";
-
 import authRoutes from "./src/routes/auth.js";
-// If you really use these, keep; otherwise remove the next line:
 import reportRoutes from "./src/routes/reportRoutes.js";
 
 import pool from "./src/db/mysql.js";
@@ -714,6 +712,7 @@ app.post("/users/upsert", async (req, res) => {
 app.use("/auth", authRoutes);
 // Use report routes
 app.use("/reports", reportRoutes);
+
 
 // ---------- JSON-only fallbacks ----------
 app.use((req, res) => {

@@ -1,175 +1,232 @@
 // screens/DocumentUploadScreen.js
-import React, { useState } from "react";
+import React, { useRef, useState, useLayoutEffect } from "react";
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  Platform,
   ActivityIndicator,
   Alert,
+  BackHandler,
+  Platform,
   ScrollView,
 } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
-import { useNavigation } from "@react-navigation/native";
-import { useAuth } from "../src/context/AuthContext";
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
+import { Ionicons } from "@expo/vector-icons";
 
-const API_BASE =
-  Platform.OS === "android" ? "http://10.0.2.2:5000" : "http://localhost:5000";
+const API_BASE = Platform.select({
+  android: process.env.EXPO_PUBLIC_API_BASE_ANDROID || "http://10.0.2.2:5000",
+  ios: process.env.EXPO_PUBLIC_API_BASE_IOS || "http://localhost:5000",
+  default: "http://localhost:5000",
+});
 
 export default function DocumentUploadScreen() {
-  const nav = useNavigation();
-  const { token } = useAuth();
-
-  const [file, setFile] = useState(null);
+  const navigation = useNavigation();
   const [busy, setBusy] = useState(false);
-  const [summary, setSummary] = useState("");
+  const [lastFilename, setLastFilename] = useState(null);
+  const abortRef = useRef(null);
 
-  const pickPdf = async () => {
-    setSummary("");
-    const res = await DocumentPicker.getDocumentAsync({
-      type: "application/pdf",
-      multiple: false,
-      copyToCacheDirectory: true,
-    });
-    if (res.canceled) return;
-    const f = res.assets?.[0];
-    if (!f) return;
-    setFile(f); // { name, size, uri, mimeType }
+  const goHome = () => {
+    if (abortRef.current) {
+      try {
+        abortRef.current.abort();
+      } catch {}
+      abortRef.current = null;
+    }
+    if (navigation.canGoBack()) navigation.goBack();
+    else navigation.navigate("Home");
   };
 
-  const summarize = async () => {
-    if (!file) {
-      Alert.alert("No file", "Please choose a PDF first.");
-      return;
-    }
-    setBusy(true);
-    setSummary("");
+  // Header: add "Cancel" button that always returns Home
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      title: "Upload Report",
+      headerBackTitleVisible: false,
+      headerLeft: () => (
+        <TouchableOpacity onPress={goHome} style={{ paddingHorizontal: 8 }}>
+          <Ionicons name="arrow-back" size={22} color="#0A1F44" />
+        </TouchableOpacity>
+      ),
+      headerRight: () => (
+        <TouchableOpacity onPress={goHome} style={{ paddingHorizontal: 12 }}>
+          <Text style={{ color: "#0A1F44", fontWeight: "600" }}>Home</Text>
+        </TouchableOpacity>
+      ),
+    });
+  }, [navigation]);
+  // Android hardware back: if uploading, treat as cancel-to-home
+  useFocusEffect(
+    React.useCallback(() => {
+      const onBack = () => {
+        if (busy) {
+          goHome();
+          return true; // we handled it
+        }
+        return false; // let default back happen
+      };
+      BackHandler.addEventListener("hardwareBackPress", onBack);
+      return () => BackHandler.removeEventListener("hardwareBackPress", onBack);
+    }, [busy])
+  );
+
+  const pickAndUpload = async () => {
     try {
+      const res = await DocumentPicker.getDocumentAsync({
+        type: "application/pdf",
+        multiple: false,
+        copyToCacheDirectory: true,
+      });
+      if (res.canceled) return;
+
+      const file = res.assets?.[0];
+      if (!file) return;
+
+      setLastFilename(file.name || "report.pdf");
+      setBusy(true);
+
+      // Build form-data
       const form = new FormData();
       form.append("file", {
         uri: file.uri,
         name: file.name || "report.pdf",
-        type: file.mimeType || "application/pdf",
+        type: "application/pdf",
       });
 
-      const res = await fetch(`${API_BASE}/reports/summarize`, {
+      // Abortable fetch
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      const r = await fetch(`${API_BASE}/reports/summary`, {
         method: "POST",
         headers: {
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          Accept: "application/json",
+          // DO NOT set Content-Type for FormData; RN will set the correct boundary
         },
         body: form,
+        signal: controller.signal,
       });
 
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`Summarize failed (${res.status}): ${text}`);
+      abortRef.current = null;
+
+      if (!r.ok) {
+        const err = await safeJson(r);
+        throw new Error(err?.error || `Upload failed (${r.status})`);
       }
-      const data = await res.json(); // { ok, filename, summary }
-      setSummary(data.summary || "");
+
+      const data = await r.json();
+      // For now, just show a quick summary and then return Home
+      Alert.alert(
+        "Upload complete",
+        `Pages: ${data.pages}\nFile: ${data.filename}\n\n${
+          data.summary ? "Summary received." : "No summary (API key not set)."
+        }`,
+        [{ text: "OK", onPress: () => navigation.navigate("Home") }]
+      );
     } catch (e) {
-      Alert.alert("Error", e?.message || "Could not summarize this PDF.");
+      if (e.name === "AbortError") {
+        // user cancelled; just ignore
+      } else {
+        Alert.alert("Upload error", e.message || String(e));
+      }
     } finally {
       setBusy(false);
+      abortRef.current = null;
     }
-  };
-
-  const askFollowUpInChat = () => {
-    if (!summary) {
-      Alert.alert("No summary yet", "Summarize the PDF first.");
-      return;
-    }
-    nav.navigate("Chat", {
-      initialQuery:
-        `Here is a summary of a financial report:\n\n${summary}\n\n` +
-        `Based on this, what are the key risks and opportunities for a novice retail investor?`,
-    });
   };
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>Upload Report</Text>
+      <Text style={styles.h1}>Upload a PDF report</Text>
+      <Text style={styles.p}>
+        FinBot will extract text and (optionally) generate a short summary to
+        help you skim large financial documents.
+      </Text>
 
-      <TouchableOpacity style={styles.btn} onPress={pickPdf}>
-        <Text style={styles.btnText}>Choose PDF</Text>
-      </TouchableOpacity>
-
-      {file && (
-        <View style={styles.card}>
-          <Text style={styles.meta}>Name: {file.name}</Text>
-          {typeof file.size === "number" ? (
-            <Text style={styles.meta}>
-              Size: {(file.size / 1024).toFixed(1)} KB
-            </Text>
-          ) : null}
-          <Text style={[styles.meta, { fontStyle: "italic" }]}>
-            Ready to summarize
-          </Text>
-        </View>
+      {!!lastFilename && (
+        <Text style={styles.filename}>Last picked: {lastFilename}</Text>
       )}
 
-      <TouchableOpacity
-        style={[styles.btn, !file && { opacity: 0.5 }]}
-        onPress={summarize}
-        disabled={!file || busy}
-      >
-        {busy ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.btnText}>Summarize</Text>
-        )}
-      </TouchableOpacity>
+      {!busy ? (
+        <TouchableOpacity style={styles.btn} onPress={pickAndUpload}>
+          <Ionicons
+            name="cloud-upload-outline"
+            size={18}
+            color="#fff"
+            style={{ marginRight: 8 }}
+          />
+          <Text style={styles.btnText}>Choose PDF & Upload</Text>
+        </TouchableOpacity>
+      ) : (
+        <View style={styles.loadingBox}>
+          <ActivityIndicator size="large" color="#0A1F44" />
+          <Text style={{ marginTop: 10, color: "#0A1F44" }}>
+            Uploading & parsing…
+          </Text>
 
-      {!!summary && (
-        <View style={styles.summaryBox}>
-          <Text style={styles.summaryTitle}>Summary</Text>
-          <Text style={styles.summaryText}>{summary}</Text>
-          <TouchableOpacity
-            style={[styles.btn, { marginTop: 12 }]}
-            onPress={askFollowUpInChat}
-          >
-            <Text style={styles.btnText}>Ask a follow-up in Chat</Text>
+          <TouchableOpacity style={styles.cancelBtn} onPress={goHome}>
+            <Text style={styles.cancelText}>Cancel & return Home</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.secondaryBtn} onPress={goHome}>
+            <Text style={styles.secondaryText}>Back to Home</Text>
           </TouchableOpacity>
         </View>
       )}
-
-      <Text style={styles.hint}>
-        Tip: On an emulator, drag a PDF onto the emulator and choose “File” so
-        it appears in Downloads.
-      </Text>
     </ScrollView>
   );
 }
 
+// helper
+async function safeJson(resp) {
+  try {
+    return await resp.json();
+  } catch {
+    return null;
+  }
+}
+
 const styles = StyleSheet.create({
-  container: { padding: 18, backgroundColor: "#fff" },
-  title: { fontSize: 20, fontWeight: "700", marginBottom: 12 },
+  container: { padding: 20 },
+  h1: { fontSize: 20, fontWeight: "700", marginBottom: 10 },
+  p: { color: "#444", marginBottom: 18 },
+  filename: { color: "#666", marginBottom: 10, fontStyle: "italic" },
   btn: {
     backgroundColor: "#0A1F44",
-    paddingVertical: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
     borderRadius: 10,
+    flexDirection: "row",
     alignItems: "center",
-    marginBottom: 14,
+    alignSelf: "flex-start",
   },
-  btnText: { color: "#fff", fontWeight: "700" },
-  card: {
-    borderWidth: 1,
-    borderColor: "#e5e5e5",
-    borderRadius: 10,
-    padding: 12,
-    backgroundColor: "#fafafa",
-    marginBottom: 14,
+  btnText: {
+    color: "#fff",
+    fontWeight: "700",
   },
-  meta: { color: "#333", marginBottom: 4 },
-  summaryBox: {
+  loadingBox: {
     marginTop: 10,
-    backgroundColor: "#f7fbff",
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#e3eefc",
-    padding: 12,
+    alignItems: "center",
   },
-  summaryTitle: { fontWeight: "700", marginBottom: 6, color: "#0A1F44" },
-  summaryText: { color: "#222", lineHeight: 20 },
-  hint: { marginTop: 12, color: "#666", fontSize: 12 },
+  cancelBtn: {
+    marginTop: 16,
+    padding: 10,
+  },
+  cancelText: {
+    color: "red",
+    fontWeight: "700",
+  },
+
+  secondaryBtn: {
+    marginTop: 16,
+    alignSelf: "flex-start",
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#0A1F44",
+  },
+  secondaryText: {
+    color: "#0A1F44",
+    fontWeight: "700",
+  },
 });

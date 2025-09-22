@@ -1,287 +1,253 @@
-# FinBot Project
-# finbot-app/
-|
-├── finbot-backend/
-│   ├── node_modules/
-│   ├── src/
-│   │   ├── db/
-│   │   │   └── mysql.js                 # MySQL connection
-│   │   ├── models/
-│   │   │   ├── SimulationState.js       # Tracks user's portfolio & cash
-│   │   │   ├── TransactionHistory.js    # Buy/Sell logs
-│   │   ├── services/
-│   │   │   ├── dataFetcher.js           # Yahoo Finance API integration
-│   │   │   ├── finbot.js                # Chatbot logic
-│   │   │   └── simulationService.js     # Simulation business logic
-│   │   ├── routes/
-│   │   │   ├── simulationRoutes.js      # API endpoints for simulation
-│   │   │   └── finbotRoutes.js          # Existing chatbot endpoints
-│   │   └── utils/
-│   │       └── promptBuilder.js
-│   ├── .env
-│   ├── .gitignore
-│   ├── package-lock.json
-│   ├── package.json
-│   ├── server.js                        # Express entry point
-│   └── streaming.js
-|
-├── finbot-frontend/
-│   ├── assets/
-│   ├── components/
-│   │   ├── ChatBubble.js
-│   │   ├── DocumentCard.js
-│   │   ├── StockCard.js
-│   │   ├── SimulationPortfolioCard.js   
-│   │   └── StockCard.js
-│   ├── context/
-│   │   ├── AppContext.js
-│   │   └── LanguageContext.js
-│   ├── data/
-│   │   └── glossary.json.js
-│   ├── navigation/
-│   │   ├── AppNavigator.js
-│   │   ├── MainTabs.js
-│   ├── screens/
-│   │   ├── ChatScreen.js
-│   │   ├── AuthScreen.js
-│   │   ├── ChatScreen.js  
-│   │   ├── DocumentUploadScreen.js
-│   │   ├── GlossaryScreen.js 
-│   │   ├── HomeScreen.js  
-│   │   ├── InvestorSimulationScreen.js
-│   │   ├── IonconsTest.js  
-│   │   ├── LearnScreen.js
-│   │   ├── LoginScreen.js  
-│   │   ├── OnboardingNavigator.js
-│   │   ├── OnboardingScreen.js  
-│   │   ├── PortfolioScreen.js
-│   │   ├── ProfileScreen.js  
-│   │   ├── RegisterScreen.js
-│   │   ├── ReportUploadScreen.js
-│   │   ├── SettingsScreen.js  
-│   │   └── SimulationScreen.js
-│   ├── services/
-│   │   ├── api.js  
-│   ├── src/
-│   │   ├── api/
-│   │   │   └── client.js                 
-│   │   ├── context/
-│   │   │   ├── AuthContext.js      
-│   │   │   └── i18nContext.js    
-│   │   ├── hooks/
-│   │   │   ├── useUserScopedState.js.js      
-│   │   │   └── i18nContext.js 
-│   │   ├── utils/
-│   │   │   ├── api.js      
-│   │   │   └── storage.js 
-│   ├── styles/
-│   │   └── theme.js  
-│   ├── .gitignore                  
-│   ├── App.js
-│   ├── package-lock.json
-│   └── package.json
-├── .gitignore
-├── app.json
-├── babel.config.js
-├── package-lock.json
-├── package.json
-|
-└── README.md
+FinBot — Personal Finance & Investing Assistant
 
-# FinBot Project Setup (Dev) 
-1) Prerequisites 
-   Node.js ≥ 18 (check: node -v) 
-   npm ≥ 9 (or yarn) 
-   MySQL 8 running on localhost:3306 
-   Git 
-   Android Studio + Emulator (or a real Android device with Expo Go) 
-   Expo CLI: npm i -g expo-cli (optional; npx expo also works)
+FinBot is a mobile/web app that helps a beginner investor learn by doing:
 
-2) Clone the repo 
-   git clone https://github.com/colgura/finbot-app.git 
-   cd finbot-app
+💬 Chat with an AI helper (FinBot)
 
-3) Backend (Node.js/Express) 
-   3.1 Install 
-   cd finbot-backend 
-   npm install
+📈 Investor Simulation — place virtual trades, track positions, and see a real timestamped trade history
 
-    3.2 MySQL: create DB + user (skip if already set up) 
-    -- In the MySQL shell: 
-    CREATE DATABASE IF NOT EXISTS finbot_db CHARACTER SET utf8mb4 
-    COLLATE utf8mb4_0900_ai_ci; 
-    
-    CREATE USER IF NOT EXISTS 'finbot'@'localhost' IDENTIFIED BY 
-    'finbot_pass'; 
-    GRANT ALL PRIVILEGES ON finbot_db.* TO 'finbot'@'localhost'; 
-    FLUSH PRIVILEGES;
+📚 Learning Hub — quick concepts and glossary
 
-    3.3 Environment 
-    Create finbot-backend/.env: 
-    PORT=5000 
-    NODE_ENV=development 
-    # MySQL 
-    DB_HOST=localhost 
-    DB_PORT=3306 
-    DB_USER=finbot 
-    DB_PASSWORD=finbot_pass 
-    DB_NAME=finbot_db
+📤 Upload Report — send a PDF of financials and get a concise summary (optional OpenAI key)
 
-    # OpenAI (only required for chat/summariser) 
-    OPENAI_API_KEY=sk-xxxxx 
-    
-    # CORS / auth 
-    CORS_ORIGIN=* 
-    JWT_SECRET=replace_me_dev_secret 
+⚠️ FinBot is an education tool. It does not provide financial advice.
 
-    # Optional cache (ms) for price lookups 
-    YF_CACHE_TTL=60000 3.4 Schema (tables)
+## Repository Layout
+finbot-app/
+├─ finbot-backend/ # Node.js/Express + MySQL
+└─ finbot-frontend/ # React Native (Expo)
 
-    # If DB is empty, run the DDL below once (matches the ERD & current tables): 
-    
-    USE finbot_db;
+---
+Tech Stack
 
-    # users table
-    CREATE TABLE IF NOT EXISTS users ( 
-        id INT NOT NULL AUTO_INCREMENT, 
-        name VARCHAR(100) NOT NULL, 
-        email VARCHAR(255) NOT NULL, 
-        password_hash VARCHAR(255) DEFAULT NULL, 
-        google_id VARCHAR(255) DEFAULT NULL, 
-        facebook_id VARCHAR(255) DEFAULT NULL, 
-        created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP, 
-        updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, PRIMARY KEY (id), 
-        UNIQUE KEY email (email), 
-        UNIQUE KEY google_id (google_id), 
-        UNIQUE KEY facebook_id (facebook_id) 
-        ) ENGINE=InnoDB;
-    
-    # sim_profiles table
-    CREATE TABLE IF NOT EXISTS sim_profiles ( 
-        user_id INT NOT NULL, 
-        name VARCHAR(100) NOT NULL, 
-        goal VARCHAR(100) DEFAULT NULL, 
-        risk VARCHAR(20) DEFAULT NULL, 
-        interests JSON DEFAULT NULL, 
-        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, PRIMARY KEY (user_id), 
-        CONSTRAINT fk_profiles_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE 
-        ) ENGINE=InnoDB;
+Frontend: React Native + Expo (Android emulator or Web)
 
-    # sim_accounts table
-    CREATE TABLE IF NOT EXISTS sim_accounts ( 
-        user_id INT NOT NULL, 
-        balance DECIMAL(18,2) NOT NULL DEFAULT '0.00', 
-        realized_pnl DECIMAL(18,2) NOT NULL DEFAULT '0.00', 
-        fees_total DECIMAL(18,2) NOT NULL DEFAULT '0.00', 
-        PRIMARY KEY (user_id), 
-        CONSTRAINT sim_accounts_ibfk_1 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE 
-        ) ENGINE=InnoDB;
+Backend: Node.js + Express
 
-    # sim_positions table
-    CREATE TABLE IF NOT EXISTS sim_positions ( 
-        id INT NOT NULL AUTO_INCREMENT, 
-        user_id INT NOT NULL, 
-        symbol VARCHAR(16) NOT NULL, 
-        qty INT NOT NULL, 
-        avg_cost DECIMAL(18,6) NOT NULL DEFAULT '0.000000', 
-        PRIMARY KEY (id), 
-        UNIQUE KEY uniq_user_symbol (user_id, symbol), 
-        CONSTRAINT sim_positions_ibfk_1 FOREIGN KEY (user_id) 
-        REFERENCES users(id) ON DELETE CASCADE 
-        ) ENGINE=InnoDB;
+Database: MySQL
 
-    # sim_trades table
-    CREATE TABLE IF NOT EXISTS sim_trades ( 
-        id BIGINT NOT NULL AUTO_INCREMENT, 
-        user_id INT NOT NULL, 
-        ts DATETIME NOT NULL, 
-        action ENUM('BUY','SELL') NOT NULL, 
-        symbol VARCHAR(16) NOT NULL, 
-        qty INT NOT NULL, 
-        price DECIMAL(18,4) NOT NULL, 
-        total DECIMAL(18,4) NOT NULL, 
-        fee DECIMAL(18,2) NOT NULL DEFAULT '0.00', 
-        realized_pnl DECIMAL(18,2) DEFAULT NULL, 
-        PRIMARY KEY (id), 
-        KEY idx_user_ts (user_id, ts), 
-        CONSTRAINT sim_trades_ibfk_1 FOREIGN KEY (user_id) REFERENCES 
-        users(id) ON DELETE CASCADE 
-        ) ENGINE=InnoDB;
+Optional LLM: OpenAI (for PDF summaries)
 
-    # exchanges table
-    CREATE TABLE IF NOT EXISTS exchanges ( 
-        id INT NOT NULL AUTO_INCREMENT, 
-        ticker VARCHAR(10) DEFAULT NULL, 
-        question TEXT, 
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP, 
-        PRIMARY KEY (id) 
-        ) ENGINE=InnoDB;
+Auth & State: AsyncStorage (demo), simple user upsert
 
-    # transaction_history
-    CREATE TABLE IF NOT EXISTS transaction_history ( 
-        id INT NOT NULL AUTO_INCREMENT, 
-        user_id INT NOT NULL, 
-        action ENUM('BUY','SELL') NOT NULL, 
-        symbol VARCHAR(10) NOT NULL, 
-        quantity INT NOT NULL, 
-        price DECIMAL(10,2) NOT NULL, 
-        timestamp TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP, 
-        PRIMARY KEY (id) 
-        ) ENGINE=InnoDB;
+---
+# Summarized Repo Layout
+finbot-app/
+├─ finbot-backend/
+│  ├─ src/
+│  │  └─ routes/
+│  │     ├─ auth.js
+│  │     └─ reportRoutes.js
+│  ├─ server.js
+│  ├─ package.json
+│  └─ .env  (create)
+│
+└─ finbot-frontend/
+   ├─ screens/
+   │  ├─ HomeScreen.js
+   │  ├─ ChatScreen.js
+   │  ├─ SimulationScreen.js
+   │  ├─ DocumentUploadScreen.js
+   │  └─ …
+   ├─ navigation/AppNavigator.js (or App.js routes)
+   ├─ package.json
+   └─ app.json
+# See Final Report for Detailed Directory Structure.
+---
+## Prerequisites
+- Node.js ≥ 18 and npm ≥ 9 (`node -v`, `npm -v`)
+- MySQL 8 on `localhost:3306`
+- Git
+- Android Studio + Android Emulator (or a physical Android phone with **Expo Go**)
 
-    # simulation_state
-    CREATE TABLE IF NOT EXISTS simulation_state ( 
-        id INT NOT NULL AUTO_INCREMENT, 
-        user_id INT NOT NULL, 
-        cash_balance DECIMAL(15,2) DEFAULT '10000.00', 
-        portfolio JSON DEFAULT NULL, 
-        created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (id) ) ENGINE=InnoDB;
+> Windows users: run commands in **PowerShell**.
 
-    # 3.5 (Optional) Seed a demo user 
-    USE finbot_db;
+---
+Database Setup
 
-    # Running the DB
-    INSERT INTO users(name,email,password_hash) 
-    VALUES ('Demo User','demo@example.com','$2b$10$replaceWithRealBcryptHash'); 
-    
-    -- Start them with $10,000 cash 
-    INSERT INTO sim_accounts(user_id,balance,realized_pnl,fees_total) 
-    VALUES (LAST_INSERT_ID(), 10000.00, 0.00, 0.00);
+Create a database and the core tables:
+CREATE DATABASE IF NOT EXISTS finbot_db CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+USE finbot_db;
 
-    # Tip: Generate a bcrypt hash with an online tool or a tiny Node script if you’re using password login. 
-    3.6 Run the backend 
-    npm run dev 
-    # or node server.js 
-    Expected: Server listening on :5000 and successful DB connection logs. 
-    3.7 Backend smoke tests 
-    # Health (if you have one) 
-    curl http://localhost:5000/health 
+-- Minimal user table (demo)
+CREATE TABLE IF NOT EXISTS users (
+  id INT NOT NULL AUTO_INCREMENT,
+  name VARCHAR(128) NOT NULL,
+  PRIMARY KEY (id)
+) ENGINE=InnoDB;
 
-    # Chat (SSE): open in a browser: 
-    http://localhost:5000/ask?
-    question=Is%20NVDA%20overvalued%3F&language=english
+-- Accounts (cash, totals)
+CREATE TABLE IF NOT EXISTS sim_accounts (
+  user_id INT NOT NULL,
+  balance DECIMAL(18,2) NOT NULL DEFAULT 10000.00,
+  realized_pnl DECIMAL(18,2) NOT NULL DEFAULT 0.00,
+  fees_total DECIMAL(18,2) NOT NULL DEFAULT 0.00,
+  PRIMARY KEY (user_id),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
 
-    4) Frontend (React Native / Expo) 
-       4.1 Install 
-       cd ../finbot-frontend 
-       npm install 4.2 Environment (Expo public vars) 
-       Create finbot-frontend/.env: 
-       EXPO_PUBLIC_API_BASE_ANDROID=http://10.0.2.2:5000 
-       EXPO_PUBLIC_API_BASE_IOS=http://localhost:5000 
-       EXPO_PUBLIC_DEFAULT_LANG=english Update your API base helper to read those (recommended): // finbot-frontend/src/utils/api.js (or your existing client) import { Platform } from 'react-native'; export const API_BASE = Platform.OS === 'android' ? process.env.EXPO_PUBLIC_API_BASE_ANDROID : process.env.EXPO_PUBLIC_API_BASE_IOS;
+-- Positions
+CREATE TABLE IF NOT EXISTS sim_positions (
+  user_id INT NOT NULL,
+  symbol  VARCHAR(16) NOT NULL,
+  qty     INT NOT NULL,
+  avg_cost DECIMAL(18,4) NOT NULL DEFAULT 0,
+  PRIMARY KEY (user_id, symbol),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
 
-       4.3 Run the app 
-       npx expo start -c 
-       # Press 'a' to launch Android emulator, or scan QR with Expo Go
+-- Trades (NOTE: ts has default CURRENT_TIMESTAMP)
+CREATE TABLE IF NOT EXISTS sim_trades (
+  id BIGINT NOT NULL AUTO_INCREMENT,
+  user_id INT NOT NULL,
+  ts DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  action ENUM('BUY','SELL') NOT NULL,
+  symbol VARCHAR(16) NOT NULL,
+  qty INT NOT NULL,
+  price DECIMAL(18,4) NOT NULL,
+  total DECIMAL(18,4) NOT NULL,
+  fee DECIMAL(18,2) NOT NULL DEFAULT 0.00,
+  realized_pnl DECIMAL(18,2) DEFAULT NULL,
+  PRIMARY KEY (id),
+  KEY idx_user_ts (user_id, ts),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
 
-       5) Expected Navigation Flow 
-          Onboarding → collects name, goal, risk, interests (stored server-side; 
-          minimal echo in AsyncStorage). 
-          Login/Register → obtains token; token stored in AsyncStorage. 
-          Home → navigate to Portfolio, Chat, Learn, Settings. 
-          
-          If you still see an incorrect flow (e.g., Login → Onboarding → Home in the wrong order), clear caches: 
-          Metro cache: stop Expo, run npx expo start -c 
-          AsyncStorage: Settings → “Clear local data” (if you added it), or reinstall 
-          Expo Go. 
-        6) Quick Smoke Checklist
+
+---
+## 1 Backend Setup (Express + MySQL)
+
+```powershell
+cd finbot-backend
+npm install
+Create .env:
+
+
+PORT=5000
+NODE_ENV=development
+
+# MySQL
+DB_HOST=localhost
+DB_PORT=3306
+DB_USER=finbot
+DB_PASSWORD=finbot_pass
+DB_NAME=finbot_db
+
+# OpenAI (for chat)
+OPENAI_API_KEY=sk-xxxxx
+
+# CORS / auth
+CORS_ORIGIN=*
+JWT_SECRET=replace_me_dev_secret
+
+cd finbot-backend
+npm install
+npm run dev             # nodemon server.js
+# server listens on http://localhost:5000
+
+---
+# Frontend Setup (Expo / React Native)
+powershell
+
+cd ../finbot-frontend
+npm install
+
+---
+Create .env:
+
+EXPO_PUBLIC_API_BASE_ANDROID=http://10.0.2.2:5000
+EXPO_PUBLIC_API_BASE_IOS=http://localhost:5000
+EXPO_PUBLIC_DEFAULT_LANG=english
+
+---
+
+Run the app:
+
+npx expo start -c
+# Press "a" to open on Android emulator
+# Or scan the QR with Expo Go on a physical device (same Wi-Fi)
+Login/Sign-up flow:
+
+---
+
+# Start for Web (easiest demo):
+npx expo start --web
+
+# Start for Android emulator:
+npx expo start
+# then press: a   (opens emulator)
+
+---
+# Key Screens
+
+- Home: entry buttons to Chat, Simulation, Learning, Upload
+
+- Simulation:
+
+  - Enter ticker and quantity
+
+  - Choose BUY/SELL
+
+  - Submit → cash/positions update
+
+  - Recent Trades (shows timestamp)
+
+- Upload Report:
+
+  - Select a PDF from device Downloads
+
+  - Send to backend /reports/summary
+
+  - If OPENAI_API_KEY is set, returns bullet-point summary
+
+---
+API Endpoints (Backend)
+Users
+
+POST /users/upsert
+body: { name: "Alice", goal: "...", risk: "...", interests: [...] }
+res:  { userId, profile }
+
+# Simulation
+GET  /simulation/portfolio/:userId
+res: { cash_balance, portfolio: { AAPL: {qty, avg_cost}, ... } }
+
+GET  /simulation/price?symbol=NVDA
+res: { price: 123.45 }
+
+POST /simulation/trade
+body: { userId, action: "BUY" | "SELL", symbol: "NVDA", quantity: 2, price? }
+res:  { ok: true, ... }
+
+---
+
+# Trades
+
+POST /reports/summary   (form-data: file=<PDF>)
+res: { ok, pages, bytes, filename, textPreview, summary? }
+---
+
+Scripts
+
+Backend
+npm run dev   # nodemon server.js
+
+Frontend
+npx expo start        # dev menu (press a for Android, w for Web)
+npx expo start --web  # web only
+
+---
+License
+
+MIT © 2025 Collen Gura
+
+---
+Acknowledgements
+
+React Native, Expo
+
+Express, MySQL
+
+OpenAI (optional summaries)
+
+---
