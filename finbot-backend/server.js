@@ -3,9 +3,9 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import OpenAI from "openai";
-import authRoutes from "./src/routes/auth.js";
-import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import authRoutes from "./src/routes/auth.js";
+import reportRoutes from "./src/routes/reportRoutes.js";
 
 import pool from "./src/db/mysql.js";
 import {
@@ -16,10 +16,8 @@ import {
 } from "./src/services/dataFetcher.js";
 
 dotenv.config();
-
 const app = express();
 const PORT = process.env.PORT || 5000;
-const JWT_SECRET = process.env.JWT_SECRET || "dev_secret_change_me";
 
 app.use(cors());
 app.use(express.json());
@@ -30,6 +28,21 @@ app.use((req, _res, next) => {
   console.log(`➡️  ${req.method} ${req.path}`);
   next();
 });
+
+const JWT_SECRET = process.env.JWT_SECRET || "dev_secret_change_me";
+
+// Helper: get userId from Authorization: Bearer <token>
+function getUserIdFromAuth(req) {
+  try {
+    const auth = req.headers.authorization || "";
+    const m = auth.match(/^Bearer\s+(.+)$/i);
+    if (!m) return null;
+    const payload = jwt.verify(m[1], JWT_SECRET);
+    return payload?.sub || null;
+  } catch {
+    return null;
+  }
+}
 
 // ----- Fee model -----
 const FEE_RATE = 0.0005; // 5 bps
@@ -57,7 +70,7 @@ app.get("/ask", async (req, res) => {
     const systemPrompt =
       language === "shona"
         ? `Iwe uri chipangamazano wezvemari. Zvese zvamunopindura zvichava muchiShona chete. Usashandise Chirungu zvachose kunze kwekuti uchiudza mazwi anonyanya kushandiswa muChirungu. Kana shoko racho riri reChirungu, tsanangura zvarinoreva muchiShona. Muenzaniso: "Dividend ishoko rinoreva mubhadharo unobva mukambani, unopiwa kune vanotenga zvikamu (shareholders)." Shandisa mazwi akareruka uye mashoko anozivikanwa.`
-        : "You are a financial advisor. Reply clearly and simply in English.";
+        : "You are an educational finance assistant. Reply clearly and simply in English.";
 
     let userPrompt = question;
     const extracted = resolveTicker(question);
@@ -209,6 +222,40 @@ app.get("/simulation/price", async (req, res) => {
   } catch (e) {
     console.error("Price fetch error:", e?.message || e);
     res.json({ price: null, error: "Lookup failed" });
+  }
+});
+
+// Recent trades for the current user (or ?userId=... fallback for demo)
+app.get("/trades/recent", async (req, res) => {
+  try {
+    const tokenUserId = getUserIdFromAuth(req);
+    const queryUserId = Number(req.query.userId || 0) || null;
+    const userId = tokenUserId || queryUserId;
+
+    if (!userId) {
+      return res.status(401).json({
+        ok: false,
+        error:
+          "Missing user context. Provide Bearer token or ?userId=1 for demo.",
+      });
+    }
+
+    const limit = Math.min(Number(req.query.limit || 20), 100);
+
+    const [rows] = await pool.query(
+      `
+      SELECT id, ts, action, symbol, qty, price, fee, realized_pnl
+        FROM sim_trades
+       WHERE user_id = ?
+       ORDER BY ts DESC
+       LIMIT ?`,
+      [userId, limit]
+    );
+
+    return res.json({ ok: true, trades: rows });
+  } catch (e) {
+    console.error("recent trades error:", e);
+    return res.status(500).json({ ok: false, error: "Failed to load trades" });
   }
 });
 
@@ -663,6 +710,9 @@ app.post("/users/upsert", async (req, res) => {
 });
 
 app.use("/auth", authRoutes);
+// Use report routes
+app.use("/reports", reportRoutes);
+
 
 // ---------- JSON-only fallbacks ----------
 app.use((req, res) => {

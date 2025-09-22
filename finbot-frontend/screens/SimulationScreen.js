@@ -18,13 +18,20 @@ import { colors, fontSizes } from "../styles/theme";
 const BASE_URL =
   Platform.OS === "android" ? "http://10.0.2.2:5000" : "http://localhost:5000";
 
+const toLocalTime = (ts) => {
+  if (!ts) return "";
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return String(ts); // fallback if server sends a weird string
+  return d.toLocaleString();
+};
+
 export default function SimulationScreen() {
   // --- boot/profile state ---
   const [booting, setBooting] = useState(true); // loading profile from storage
   const [showWelcome, setShowWelcome] = useState(false);
   const [profileName, setProfileName] = useState("");
   const [isSubmittingProfile, setIsSubmittingProfile] = useState(false);
-  const [userId, setUserId] = useState(null); // <- drives portfolio load
+  const [userId, setUserId] = useState(null);
 
   // --- trading state ---
   const [loading, setLoading] = useState(false);
@@ -39,6 +46,16 @@ export default function SimulationScreen() {
   const [priceLoading, setPriceLoading] = useState(false);
 
   const debounceRef = useRef(null);
+
+  async function loadRecentTrades(uid) {
+    try {
+      const r = await fetch(`${BASE_URL}/trades/recent?userId=${uid}&limit=20`);
+      const j = await r.json();
+      if (j.ok) setHistory(j.trades || []);
+    } catch (e) {
+      console.warn("loadRecentTrades:", e);
+    }
+  }
 
   // --- boot: load profile from AsyncStorage, decide welcome vs trading ---
   useEffect(() => {
@@ -72,6 +89,7 @@ export default function SimulationScreen() {
   useEffect(() => {
     if (userId == null) return;
     fetchPortfolio(userId);
+    loadRecentTrades(userId); // ← add this
   }, [userId]);
 
   // --- debounce price lookups ---
@@ -122,6 +140,7 @@ export default function SimulationScreen() {
       setUserId(Number(data.userId));
       setShowWelcome(false);
       setMessage("✅ Profile saved");
+      loadRecentTrades(Number(data.userId));
     } catch (e) {
       console.error("Profile save failed:", e);
       setMessage("❌ Failed to save profile");
@@ -131,13 +150,19 @@ export default function SimulationScreen() {
   };
 
   // ===== API calls =====
-  const fetchPortfolio = async () => {
+  const fetchPortfolio = async (uid = userId) => {
     setLoading(true);
     try {
-      const data = await api(`/simulation/portfolio/${userId}`);
+      // account/positions (whatever your backend returns here)
+      const data = await api(`/simulation/portfolio/${uid}`);
       setCashBalance(parseFloat(data.cash_balance || 0));
       setPortfolio(data.portfolio || {});
-      if (Array.isArray(data.history)) setHistory(data.history);
+
+      // trades: always from the dedicated endpoint (ORDER BY ts DESC)
+      const t = await api(
+        `/trades/recent?limit=20${uid ? `&userId=${uid}` : ""}`
+      );
+      if (Array.isArray(t.trades)) setHistory(t.trades);
     } catch (error) {
       console.error("❌ Error fetching portfolio:", error);
     } finally {
@@ -157,6 +182,67 @@ export default function SimulationScreen() {
       setPrice(null);
     } finally {
       setPriceLoading(false);
+    }
+  };
+
+  // --- submit trade (BUY/SELL), then refresh portfolio + recent trades ---
+  const submitTrade = async () => {
+    const sym = symbol.trim().toUpperCase();
+    const qty = Number.parseInt(quantity, 10);
+
+    if (!userId) {
+      setMessage("Please create a profile first.");
+      return;
+    }
+    if (!sym) {
+      setMessage("Enter a ticker (e.g., NVDA).");
+      return;
+    }
+    if (!Number.isFinite(qty) || qty <= 0) {
+      setMessage("Enter a valid quantity.");
+      return;
+    }
+
+    setLoading(true);
+    setMessage("Placing order…");
+
+    try {
+      const resp = await fetch(
+        `${BASE_URL}/simulation/trade`, 
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userId,
+            action, // "BUY" or "SELL" from state
+            symbol: sym,
+            quantity: qty,
+            
+            ...(typeof price === "number" ? { price } : {}),
+          }),
+        }
+      );
+
+      const data = await resp.json();
+      if (!resp.ok || data?.error) {
+        setMessage(`❌ ${data?.error || `HTTP ${resp.status}`}`);
+        return;
+      }
+
+      setMessage(`✅ ${action} ${sym} × ${qty} placed`);
+
+      // ⬇️ THIS is the key: refresh everything after a successful trade
+      await fetchPortfolio(); // updates cash + positions
+      await loadRecentTrades(userId); // pulls latest trades with DB timestamps
+
+      // clear form
+      setSymbol("");
+      setQuantity("");
+    } catch (e) {
+      console.error("submitTrade error:", e);
+      setMessage("❌ Trade failed");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -231,6 +317,13 @@ export default function SimulationScreen() {
             <Text style={styles.submitText}>
               {isSubmittingProfile ? "Saving..." : "Continue"}
             </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.btn}
+            onPress={submitTrade}
+            disabled={loading}
+          >
+            <Text style={styles.btnText}>{loading ? "Working…" : action}</Text>
           </TouchableOpacity>
 
           {message ? <Text style={styles.message}>{message}</Text> : null}

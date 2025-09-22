@@ -43,7 +43,6 @@ router.post("/signup", async (req, res) => {
     }
     console.log("➡️  /auth/signup body:", req.body);
 
-
     // email unique?
     const [[exists]] = await pool.query(
       "SELECT id FROM users WHERE email = ?",
@@ -111,6 +110,55 @@ router.get("/me", async (req, res) => {
     res.json({ ok: true, user: row });
   } catch (e) {
     return res.status(401).json({ error: "Invalid token" });
+  }
+});
+
+// Accepts existing app payload and behaves like /signup
+router.post("/register", async (req, res) => {
+  try {
+    const { fullName, name, email, username, password, human } = req.body || {};
+    const resolvedName = fullName || name;
+    const resolvedEmail = email || username;
+
+    const isHuman =
+      human === undefined || human === null
+        ? true
+        : human === true || human === "true" || human === 1 || human === "1";
+
+    if (!resolvedName || !resolvedEmail || !password) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+    if (!isHuman) {
+      return res.status(400).json({ error: "Human verification failed" });
+    }
+
+    const [[exists]] = await pool.query(
+      "SELECT id FROM users WHERE email = ?",
+      [resolvedEmail]
+    );
+    if (exists)
+      return res.status(409).json({ error: "Email already registered" });
+
+    const hash = await bcrypt.hash(password, 12);
+    const [result] = await pool.query(
+      "INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)",
+      [resolvedName, resolvedEmail, hash]
+    );
+
+    const user = {
+      id: result.insertId,
+      name: resolvedName,
+      email: resolvedEmail,
+    };
+    const token = jwt.sign(
+      { sub: user.id, email: user.email, name: user.name },
+      process.env.JWT_SECRET || "dev_secret_change_me",
+      { expiresIn: "7d" }
+    );
+    return res.status(201).json({ ok: true, token, user });
+  } catch (e) {
+    console.error("register error:", e);
+    return res.status(500).json({ error: "Signup failed" });
   }
 });
 
